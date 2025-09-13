@@ -8,9 +8,7 @@ import imageio
 from PIL import Image
 import tempfile
 import os
-from scipy import signal
 from scipy.interpolate import CubicSpline
-import time
 from moviepy.editor import VideoFileClip, AudioFileClip
 
 # Configurazione della pagina
@@ -33,25 +31,21 @@ che si evolvono con il suono.
 with st.sidebar:
     st.header("Controlli")
     
-    # Caricamento file audio
     audio_file = st.file_uploader("Carica un file audio", type=['wav', 'mp3', 'ogg', 'flac'])
     
-    # Parametri di configurazione
     st.subheader("Parametri Video")
     st.info("💡 Il video avrà automaticamente la stessa durata del file audio caricato")
     
-    # Selezione del formato di esportazione
     aspect_ratio = st.selectbox(
         "Formato di esportazione",
         ["1:1 (Quadrato)", "9:16 (Verticale)", "16:9 (Orizzontale)"]
     )
     
-    # Imposta le dimensioni in base al formato scelto
     if aspect_ratio == "1:1 (Quadrato)":
         width, height = 800, 800
     elif aspect_ratio == "9:16 (Verticale)":
         width, height = 540, 960
-    else:  # 16:9 (Orizzontale)
+    else:
         width, height = 1280, 720
         
     fps = st.slider("FPS", 10, 60, 24)
@@ -67,41 +61,25 @@ with st.sidebar:
         ["Arcobaleno", "Pastello", "Monocromatico", "Neon"]
     )
     
-    # Pulsante di generazione
     generate_button = st.button("Genera Video", type="primary")
 
 # Funzioni per l'elaborazione audio
 def extract_audio_features(y, sr, frame_size, hop_length):
     """Estrae features audio per ogni frame del video"""
     features = {}
-    
-    # Calcola l'RMS (energia) per ogni frame
     features['rms'] = librosa.feature.rms(y=y, frame_length=frame_size, hop_length=hop_length)[0]
+    features['centroid'] = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=frame_size, hop_length=hop_length)[0]
+    features['bandwidth'] = librosa.feature.spectral_bandwidth(y=y, sr=sr, n_fft=frame_size, hop_length=hop_length)[0]
+    features['zcr'] = librosa.feature.zero_crossing_rate(y, frame_length=frame_size, hop_length=hop_length)[0]
     
-    # Centroid spettrale (indica il "baricentro" dello spettro)
-    features['centroid'] = librosa.feature.spectral_centroid(y=y, sr=sr, 
-                                                           n_fft=frame_size, 
-                                                           hop_length=hop_length)[0]
-    
-    # Bandwidth spettrale
-    features['bandwidth'] = librosa.feature.spectral_bandwidth(y=y, sr=sr,
-                                                             n_fft=frame_size,
-                                                             hop_length=hop_length)[0]
-    
-    # Zero crossing rate
-    features['zcr'] = librosa.feature.zero_crossing_rate(y, frame_length=frame_size, 
-                                                       hop_length=hop_length)[0]
-    
-    # Normalizza le features
     for key in features:
         if np.max(features[key]) > 0:
             features[key] = features[key] / np.max(features[key])
     
     return features
 
-# Funzioni di rendering
+# Funzioni di rendering (nessuna modifica qui)
 def create_color_palette(palette_name, n_colors):
-    """Crea una palette di colori in base alla selezione"""
     if palette_name == "Arcobaleno":
         return plt.cm.rainbow(np.linspace(0, 1, n_colors))
     elif palette_name == "Pastello":
@@ -118,181 +96,99 @@ def create_color_palette(palette_name, n_colors):
             colors.append([r, g, b, 1.0])
         return np.array(colors)
 
+def fig_to_array(fig):
+    fig.canvas.draw()
+    img = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).reshape(fig.canvas.get_width_height()[::-1] + (4,))
+    img = img[:, :, :3]
+    plt.close(fig)
+    return img
+
 def draw_geometric_frame(width, height, params, color_palette):
-    """Disegna un frame con pattern geometrici ispirati a Mary Boole"""
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
-    ax.set_facecolor('black')  # Sfondo nero
+    ax.set_facecolor('black')
     fig.tight_layout(pad=0)
-    
-    # Estrai parametri
     num_lines = int(20 + params['rms'] * 100)
     distortion = params['centroid'] * 2
-    complexity = int(3 + params['bandwidth'] * 10)
-    
-    # Colori
     colors = create_color_palette(color_palette, num_lines)
-    
-    # Disegna linee geometriche
     for i in range(num_lines):
-        # Calcola punti di inizio e fine con distorsione basata sull'audio
         x1 = i * (width / num_lines)
         y1 = 0
-        
-        # Applica una funzione sinusoidale per creare curve
         x2 = width - (i * (width / num_lines))
         y2 = height + np.sin(i * 0.2) * distortion * 50
-        
-        # Disegna la linea
         ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
-    
-    # Converti la figura in un array numpy usando la funzione helper
     return fig_to_array(fig)
 
 def draw_organic_frame(width, height, params, color_palette):
-    """Disegna un frame con pattern organici e fluidi"""
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
-    ax.set_facecolor('black')  # Sfondo nero
+    ax.set_facecolor('black')
     fig.tight_layout(pad=0)
-    
-    # Estrai parametri
     num_points = 50
     distortion_x = params['rms'] * 50
     distortion_y = params['centroid'] * 30
     frequency = 0.1 + params['bandwidth'] * 0.3
-    
-    # Crea punti base
     x = np.linspace(0, width, num_points)
     y = np.linspace(height/2, height/2, num_points)
-    
-    # Applica distorsioni
     y += np.sin(x * frequency) * distortion_y
     x += np.cos(y * 0.05) * distortion_x
-    
-    # Crea una curva spline
-    if len(x) > 3 and len(y) > 3:  # Assicurati di avere abbastanza punti
+    if len(x) > 3 and len(y) > 3:
         try:
             cs = CubicSpline(x, y)
             xs = np.linspace(min(x), max(x), 200)
             ys = cs(xs)
-            
-            # Crea segmenti di linea colorati
             points = np.array([xs, ys]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            
-            # Crea una mappa di colori
             colors = create_color_palette(color_palette, len(segments))
             lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
             ax.add_collection(lc)
-        except Exception as e:
-            # Fallback: disegna una linea semplice
+        except Exception:
             ax.plot(x, y, color='white', linewidth=2, alpha=0.8)
-    
-    # Converti la figura in un array numpy
-    fig.canvas.draw()
-    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    plt.close(fig)
-    
-    return img
-
-# Funzione helper per convertire matplotlib figure in array numpy (duplicata per sicurezza)
-def fig_to_array(fig):
-    """Converte una figura matplotlib in un array numpy"""
-    fig.canvas.draw()
-    
-    # Prova prima il metodo moderno, poi quello deprecato come fallback
-    try:
-        # Metodo per matplotlib >= 3.8
-        img = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
-        img = img[:, :, :3]  # Rimuovi il canale alpha
-    except AttributeError:
-        try:
-            # Metodo deprecato ma ancora supportato
-            img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        except AttributeError:
-            # Ultimo fallback
-            img = np.array(fig.canvas.renderer.buffer_rgba())
-            img = img[:, :, :3]  # Rimuovi il canale alpha
-    
-    plt.close(fig)
-    return img
+    return fig_to_array(fig)
 
 def draw_hybrid_frame(width, height, params, color_palette):
-    """Disegna un frame che combina elementi geometrici e organici"""
-    # Determina il bilanciamento tra stili in base alle features audio
     geometric_weight = params['rms']
     organic_weight = 1 - geometric_weight
-    
-    # Genera entrambi i frame
     geometric_img = draw_geometric_frame(width, height, params, color_palette)
     organic_img = draw_organic_frame(width, height, params, color_palette)
-    
-    # Combina i frame con pesi diversi
-    blended_img = cv2.addWeighted(geometric_img, geometric_weight, 
-                                 organic_img, organic_weight, 0)
-    
+    blended_img = cv2.addWeighted(geometric_img, geometric_weight, organic_img, organic_weight, 0)
     return blended_img
 
 def draw_chaotic_frame(width, height, params, color_palette):
-    """Disegna un frame con pattern caotici e complessi"""
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
-    ax.set_facecolor('black')  # Sfondo nero
+    ax.set_facecolor('black')
     fig.tight_layout(pad=0)
-    
-    # Parametri basati sull'audio
     num_elements = int(100 + params['rms'] * 200)
-    chaos_level = params['bandwidth'] * 2
     size_variation = params['centroid'] * 3
-    
-    # Colori
     colors = create_color_palette(color_palette, num_elements)
-    
-    # Disegna elementi caotici
     for i in range(num_elements):
-        # Posizione casuale ma influenzata dall'audio
         x = np.random.rand() * width
         y = np.random.rand() * height
-        
-        # Dimensione influenzata dall'audio
-        size = (5 + np.random.rand() * 20) * max(0.1, size_variation)  # Evita dimensioni zero
-        
-        # Forma influenzata dall'audio
+        size = (5 + np.random.rand() * 20) * max(0.1, size_variation)
         shape_type = int((params['zcr'] + np.random.rand()) * 3) % 3
-        
         if shape_type == 0:
-            # Cerchio
             circle = plt.Circle((x, y), size, color=colors[i % len(colors)], alpha=0.6)
             ax.add_patch(circle)
         elif shape_type == 1:
-            # Quadrato
-            rect = plt.Rectangle((x-size/2, y-size/2), size, size, 
-                               color=colors[i % len(colors)], alpha=0.6)
+            rect = plt.Rectangle((x-size/2, y-size/2), size, size, color=colors[i % len(colors)], alpha=0.6)
             ax.add_patch(rect)
         else:
-            # Linea con angolo casuale
             angle = np.random.rand() * 2 * np.pi
             dx = np.cos(angle) * size
             dy = np.sin(angle) * size
-            ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], 
-                   linewidth=2, alpha=0.7)
-    
-    # Converti la figura in un array numpy usando la funzione helper
+            ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
-# Funzione principale per generare il video senza audio
+# Nuova funzione per generare il video senza audio
 def generate_video_frames(audio_path, width, height, fps, style, color_palette):
-    """Genera un video senza audio dall'audio con visualizzazioni algoritmiche"""
+    """Genera un video senza audio dai frame e restituisce il percorso del file."""
     try:
         y, sr = librosa.load(audio_path)
         video_duration = len(y) / sr
@@ -313,10 +209,7 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette):
         status_text = st.empty()
         
         for i in range(total_frames):
-            frame_features = {}
-            for key in features:
-                idx = min(i, len(features[key]) - 1)
-                frame_features[key] = features[key][idx]
+            frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             
             if style == "Geometrico":
                 frame = draw_geometric_frame(width, height, frame_features, color_palette)
@@ -328,87 +221,61 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette):
                 frame = draw_chaotic_frame(width, height, frame_features, color_palette)
             
             writer.append_data(frame)
-            
             progress = (i + 1) / total_frames
             progress_bar.progress(progress)
             status_text.text(f"Generazione frame {i+1}/{total_frames} - Durata: {video_duration:.1f}s")
         
         writer.close()
-        
         progress_bar.empty()
         status_text.empty()
-        
         return temp_video_path
         
     except Exception as e:
-        st.error(f"Errore durante la generazione del video: {str(e)}")
+        st.error(f"Errore durante la generazione dei frame: {str(e)}")
         return None
 
+# Nuova funzione per unire video e audio
 def merge_audio_video(video_path, audio_path, output_path):
     """Unisce un file video con un file audio usando moviepy."""
     try:
         video_clip = VideoFileClip(video_path)
         audio_clip = AudioFileClip(audio_path)
-        
         final_clip = video_clip.set_audio(audio_clip)
-        
         final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
-        
         video_clip.close()
         audio_clip.close()
-        
         return True
     except Exception as e:
         st.error(f"Errore durante l'unione di video e audio: {str(e)}")
         return False
 
-# Main app logic
+# Logica principale dell'app
 if audio_file and generate_button:
-    # Salva i file temporaneamente
-    audio_path = None
-    video_path_no_audio = None
-    final_video_path = None
-    
+    audio_path, video_path_no_audio, final_video_path = None, None, None
     try:
-        # Salva il file audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{audio_file.type.split("/")[-1]}') as tmp_audio:
             tmp_audio.write(audio_file.read())
             audio_path = tmp_audio.name
             
-        # Genera il video senza audio
-        with st.spinner("Generazione dei frame video..."):
-            video_path_no_audio = generate_video_frames(
-                audio_path, width, height, fps, style, color_palette
-            )
+        with st.spinner("Generazione dei frame video in corso..."):
+            video_path_no_audio = generate_video_frames(audio_path, width, height, fps, style, color_palette)
         
         if video_path_no_audio and os.path.exists(video_path_no_audio):
-            # Unisci il video con l'audio
-            st.info("Unione di video e audio...")
-            
+            st.info("Unione di video e audio in corso...")
             temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             final_video_path = temp_output.name
             temp_output.close()
 
             if merge_audio_video(video_path_no_audio, audio_path, final_video_path):
                 st.success("Video generato con successo!")
-                
-                # Mostra il video
                 st.video(final_video_path)
                 
-                # Pulsante per scaricare il video
                 try:
                     with open(final_video_path, "rb") as f:
                         video_data = f.read()
-                    
                     ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
                     file_name = f"AudioLinee2_{ratio_name}.mp4"
-                    
-                    st.download_button(
-                        label="Scarica Video",
-                        data=video_data,
-                        file_name=file_name,
-                        mime="video/mp4"
-                    )
+                    st.download_button(label="Scarica Video", data=video_data, file_name=file_name, mime="video/mp4")
                 except Exception as e:
                     st.error(f"Errore durante la preparazione del download: {str(e)}")
             else:
@@ -420,16 +287,11 @@ if audio_file and generate_button:
         st.error(f"Si è verificato un errore durante la generazione: {str(e)}")
     
     finally:
-        # Pulizia file temporanei
-        if audio_path and os.path.exists(audio_path):
-            os.unlink(audio_path)
-        if video_path_no_audio and os.path.exists(video_path_no_audio):
-            os.unlink(video_path_no_audio)
-        if final_video_path and os.path.exists(final_video_path):
-            os.unlink(final_video_path)
+        for p in [audio_path, video_path_no_audio, final_video_path]:
+            if p and os.path.exists(p):
+                os.unlink(p)
 
 else:
-    # Mostra istruzioni e esempio
     st.info("""
     ### Istruzioni:
     1. Carica un file audio usando il pannello a sinistra
@@ -440,27 +302,21 @@ else:
     ⚠️ **Nota**: Il video avrà automaticamente la stessa durata del file audio caricato.
     """)
     
-    # Mostra anteprime dei diversi formati
     st.subheader("Formati di esportazione disponibili")
-    
     col1, col2, col3 = st.columns(3)
-    
     with col1:
         st.write("**Formato 1:1 (Quadrato)**")
         st.write("Perfetto per Instagram e social media")
         st.write("Dimensioni: 800x800 px")
-        
     with col2:
         st.write("**Formato 9:16 (Verticale)**")
         st.write("Ideale per TikTok e Instagram Stories")
         st.write("Dimensioni: 540x960 px")
-        
     with col3:
         st.write("**Formato 16:9 (Orizzontale)**")
         st.write("Perfetto per YouTube e presentazioni")
         st.write("Dimensioni: 1280x720 px")
 
-# Footer
 st.markdown("---")
 st.markdown(
     """
