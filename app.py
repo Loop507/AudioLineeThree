@@ -14,14 +14,14 @@ import time
 
 # Configurazione della pagina
 st.set_page_config(
-    page_title="AudioLineeThree by Loop507",
+    page_title="AudioLineThree by Loop507",
     page_icon="🎵",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Titolo dell'app
-st.title("🎵 AudioLineeThree by Loop507")
+st.title("🎵 AudioLineThree by Loop507")
 st.markdown("""
 Trasforma la tua musica in opere d'arte algoritmiche uniche.
 Carica un file audio e lascia che l'algoritmo generi un video con visualizzazioni geometriche
@@ -445,7 +445,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center'>
-        <p>AudioLinee2 by Loop507 - Realizzato con Python e Streamlit</p>
+        <p>AudioLineThree by Loop507 - Realizzato con Python e Streamlit</p>
         <p>Converte file audio in visualizzazioni artistiche algoritmiche</p>
     </div>
     """,
