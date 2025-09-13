@@ -11,6 +11,7 @@ import os
 from scipy import signal
 from scipy.interpolate import CubicSpline
 import time
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 # Configurazione della pagina
 st.set_page_config(
@@ -198,7 +199,7 @@ def draw_organic_frame(width, height, params, color_palette):
     img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     plt.close(fig)
     
-    return img
+   return img
 
 # Funzione helper per convertire matplotlib figure in array numpy (duplicata per sicurezza)
 def fig_to_array(fig):
