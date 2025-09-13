@@ -147,13 +147,8 @@ def draw_geometric_frame(width, height, params, color_palette):
         # Disegna la linea
         ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
     
-    # Converti la figura in un array numpy
-    fig.canvas.draw()
-    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    plt.close(fig)
-    
-    return img
+    # Converti la figura in un array numpy usando la funzione helper
+    return fig_to_array(fig)
 
 def draw_organic_frame(width, height, params, color_palette):
     """Disegna un frame con pattern organici e fluidi"""
@@ -352,7 +347,7 @@ if audio_file and generate_button:
         # Genera il video
         with st.spinner("Generazione del video in corso..."):
             video_path = generate_video(
-                audio_path, duration, width, height, fps, style, color_palette
+                audio_path, max_duration, width, height, fps, style, color_palette
             )
         
         if video_path and os.path.exists(video_path):
@@ -434,3 +429,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+ 
