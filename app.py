@@ -99,6 +99,30 @@ def extract_audio_features(y, sr, frame_size, hop_length):
     
     return features
 
+# Funzione helper per convertire matplotlib figure in array numpy
+def fig_to_array(fig):
+    """Converte una figura matplotlib in un array numpy"""
+    fig.canvas.draw()
+    
+    # Prova prima il metodo moderno, poi quello deprecato come fallback
+    try:
+        # Metodo per matplotlib >= 3.8
+        img = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+        img = img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+        img = img[:, :, :3]  # Rimuovi il canale alpha
+    except AttributeError:
+        try:
+            # Metodo deprecato ma ancora supportato
+            img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        except AttributeError:
+            # Ultimo fallback
+            img = np.array(fig.canvas.renderer.buffer_rgba())
+            img = img[:, :, :3]  # Rimuovi il canale alpha
+    
+    plt.close(fig)
+    return img
+
 # Funzioni di rendering
 def create_color_palette(palette_name, n_colors):
     """Crea una palette di colori in base alla selezione"""
@@ -193,37 +217,8 @@ def draw_organic_frame(width, height, params, color_palette):
             # Fallback: disegna una linea semplice
             ax.plot(x, y, color='white', linewidth=2, alpha=0.8)
     
-    # Converti la figura in un array numpy
-    fig.canvas.draw()
-    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    plt.close(fig)
-    
-   return img
-
-# Funzione helper per convertire matplotlib figure in array numpy (duplicata per sicurezza)
-def fig_to_array(fig):
-    """Converte una figura matplotlib in un array numpy"""
-    fig.canvas.draw()
-    
-    # Prova prima il metodo moderno, poi quello deprecato come fallback
-    try:
-        # Metodo per matplotlib >= 3.8
-        img = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
-        img = img[:, :, :3]  # Rimuovi il canale alpha
-    except AttributeError:
-        try:
-            # Metodo deprecato ma ancora supportato
-            img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        except AttributeError:
-            # Ultimo fallback
-            img = np.array(fig.canvas.renderer.buffer_rgba())
-            img = img[:, :, :3]  # Rimuovi il canale alpha
-    
-    plt.close(fig)
-    return img
+    # Converti la figura in un array numpy usando la funzione helper
+    return fig_to_array(fig)
 
 def draw_hybrid_frame(width, height, params, color_palette):
     """Disegna un frame che combina elementi geometrici e organici"""
@@ -306,13 +301,17 @@ def generate_video(audio_path, width, height, fps, style, color_palette):
         # Estrai le features audio
         features = extract_audio_features(y, sr, frame_size, hop_length)
         
-        # Crea un file temporaneo per il video
-        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        temp_video_path = temp_video.name
-        temp_video.close()
+        # Crea file temporanei per video senza audio e finale
+        temp_video_no_audio = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        temp_video_no_audio_path = temp_video_no_audio.name
+        temp_video_no_audio.close()
         
-        # Inizializza il writer video
-        writer = imageio.get_writer(temp_video_path, fps=fps, macro_block_size=1)
+        temp_video_final = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        temp_video_final_path = temp_video_final.name
+        temp_video_final.close()
+        
+        # Inizializza il writer video (solo video, senza audio)
+        writer = imageio.get_writer(temp_video_no_audio_path, fps=fps, macro_block_size=1)
         
         # Barra di progresso
         progress_bar = st.progress(0)
@@ -339,19 +338,70 @@ def generate_video(audio_path, width, height, fps, style, color_palette):
             # Aggiungi il frame al video
             writer.append_data(frame)
             
-            # Aggiorna la barra di progresso
-            progress = (i + 1) / total_frames
+            # Aggiorna la barra di progresso (50% per generazione video)
+            progress = (i + 1) / total_frames * 0.5
             progress_bar.progress(progress)
             status_text.text(f"Generazione frame {i+1}/{total_frames} - Durata: {video_duration:.1f}s")
         
         # Chiudi il writer
         writer.close()
         
+        # Combina video e audio usando MoviePy
+        status_text.text("Aggiunta audio al video...")
+        progress_bar.progress(0.75)
+        
+        try:
+            # Carica il video senza audio
+            video_clip = VideoFileClip(temp_video_no_audio_path)
+            
+            # Carica l'audio
+            audio_clip = AudioFileClip(audio_path)
+            
+            # Assicurati che l'audio abbia la stessa durata del video
+            if audio_clip.duration > video_clip.duration:
+                audio_clip = audio_clip.subclip(0, video_clip.duration)
+            elif audio_clip.duration < video_clip.duration:
+                # Se l'audio è più corto, taglia il video
+                video_clip = video_clip.subclip(0, audio_clip.duration)
+            
+            # Combina video e audio
+            final_clip = video_clip.set_audio(audio_clip)
+            
+            # Salva il video finale
+            final_clip.write_videofile(
+                temp_video_final_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                verbose=False,
+                logger=None
+            )
+            
+            # Chiudi i clip per liberare memoria
+            video_clip.close()
+            audio_clip.close()
+            final_clip.close()
+            
+        except Exception as e:
+            st.warning(f"Impossibile aggiungere l'audio: {str(e)}. Il video sarà senza audio.")
+            temp_video_final_path = temp_video_no_audio_path
+        
         # Ripristina la barra di progresso
+        progress_bar.progress(1.0)
+        status_text.text("Video completato!")
+        time.sleep(1)
         progress_bar.empty()
         status_text.empty()
         
-        return temp_video_path
+        # Pulizia file temporaneo (mantieni solo quello finale)
+        try:
+            if temp_video_final_path != temp_video_no_audio_path and os.path.exists(temp_video_no_audio_path):
+                os.unlink(temp_video_no_audio_path)
+        except:
+            pass
+        
+        return temp_video_final_path
         
     except Exception as e:
         st.error(f"Errore durante la generazione del video: {str(e)}")
@@ -383,7 +433,7 @@ if audio_file and generate_button:
                 
                 # Nome del file basato sul formato
                 ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
-                file_name = f"AudioLinee2_{ratio_name}.mp4"
+                file_name = f"AudioLineThree_{ratio_name}.mp4"
                 
                 st.download_button(
                     label="Scarica Video",
