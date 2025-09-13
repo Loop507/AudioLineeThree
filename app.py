@@ -262,23 +262,19 @@ def draw_chaotic_frame(width, height, params, color_palette):
             ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], 
                    linewidth=2, alpha=0.7)
     
-    # Converti la figura in un array numpy
-    fig.canvas.draw()
-    img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    plt.close(fig)
-    
-    return img
+    # Converti la figura in un array numpy usando la funzione helper
+    return fig_to_array(fig)
 
 # Funzione principale per generare il video
-def generate_video(audio_path, duration, width, height, fps, style, color_palette):
+def generate_video(audio_path, width, height, fps, style, color_palette):
     """Genera un video dall'audio con visualizzazioni algoritmiche"""
     try:
-        # Carica l'audio
-        y, sr = librosa.load(audio_path, duration=duration)
+        # Carica l'audio per ottenere la durata effettiva
+        y, sr = librosa.load(audio_path)
+        video_duration = len(y) / sr
         
         # Calcola i parametri per l'analisi audio
-        total_frames = int(duration * fps)
+        total_frames = int(video_duration * fps)
         hop_length = max(1, len(y) // total_frames)  # Evita hop_length zero
         frame_size = 2048
         
@@ -321,7 +317,7 @@ def generate_video(audio_path, duration, width, height, fps, style, color_palett
             # Aggiorna la barra di progresso
             progress = (i + 1) / total_frames
             progress_bar.progress(progress)
-            status_text.text(f"Generazione frame {i+1}/{total_frames}")
+            status_text.text(f"Generazione frame {i+1}/{total_frames} - Durata: {video_duration:.1f}s")
         
         # Chiudi il writer
         writer.close()
@@ -347,7 +343,7 @@ if audio_file and generate_button:
         # Genera il video
         with st.spinner("Generazione del video in corso..."):
             video_path = generate_video(
-                audio_path, max_duration, width, height, fps, style, color_palette
+                audio_path, width, height, fps, style, color_palette
             )
         
         if video_path and os.path.exists(video_path):
@@ -393,9 +389,11 @@ else:
     st.info("""
     ### Istruzioni:
     1. Carica un file audio usando il pannello a sinistra
-    2. Regola i parametri del video (durata, formato, FPS)
+    2. Regola i parametri del video (formato, FPS)
     3. Scegli lo stile artistico e la palette di colori
     4. Clicca 'Genera Video' per creare la tua opera d'arte algoritmica
+    
+    ⚠️ **Nota**: Il video avrà automaticamente la stessa durata del file audio caricato.
     """)
     
     # Mostra anteprime dei diversi formati
@@ -428,4 +426,4 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
-)
+)    
