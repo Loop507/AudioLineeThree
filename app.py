@@ -234,16 +234,15 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette):
         st.error(f"Errore durante la generazione dei frame: {str(e)}")
         return None
 
-# Nuova funzione per unire video e audio
+# Funzione per unire video e audio
 def merge_audio_video(video_path, audio_path, output_path):
     """Unisce un file video con un file audio usando ffmpeg-python."""
     try:
-        (
-            ffmpeg
-            .input(video_path)
-            .output(audio_path, output_path, vcodec='copy', acodec='copy')
-            .run(overwrite_output=True)
-        )
+        input_video = ffmpeg.input(video_path)
+        input_audio = ffmpeg.input(audio_path)
+        
+        ffmpeg.output(input_video, input_audio, output_path, vcodec='copy', acodec='copy').run(overwrite_output=True)
+        
         return True
     except Exception as e:
         st.error(f"Errore durante l'unione di video e audio: {str(e)}")
