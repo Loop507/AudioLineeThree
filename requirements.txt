@@ -7,4 +7,4 @@ opencv-python-headless
 imageio
 imageio-ffmpeg
 scipy
-moviepy
+ffmpeg-python
