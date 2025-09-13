@@ -9,7 +9,7 @@ from PIL import Image
 import tempfile
 import os
 from scipy.interpolate import CubicSpline
-from moviepy.editor import VideoFileClip, AudioFileClip
+import ffmpeg
 
 # Configurazione della pagina
 st.set_page_config(
@@ -78,7 +78,7 @@ def extract_audio_features(y, sr, frame_size, hop_length):
     
     return features
 
-# Funzioni di rendering (nessuna modifica qui)
+# Funzioni di rendering
 def create_color_palette(palette_name, n_colors):
     if palette_name == "Arcobaleno":
         return plt.cm.rainbow(np.linspace(0, 1, n_colors))
@@ -186,7 +186,7 @@ def draw_chaotic_frame(width, height, params, color_palette):
             ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
-# Nuova funzione per generare il video senza audio
+# Funzione per generare il video senza audio
 def generate_video_frames(audio_path, width, height, fps, style, color_palette):
     """Genera un video senza audio dai frame e restituisce il percorso del file."""
     try:
@@ -236,14 +236,14 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette):
 
 # Nuova funzione per unire video e audio
 def merge_audio_video(video_path, audio_path, output_path):
-    """Unisce un file video con un file audio usando moviepy."""
+    """Unisce un file video con un file audio usando ffmpeg-python."""
     try:
-        video_clip = VideoFileClip(video_path)
-        audio_clip = AudioFileClip(audio_path)
-        final_clip = video_clip.set_audio(audio_clip)
-        final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
-        video_clip.close()
-        audio_clip.close()
+        (
+            ffmpeg
+            .input(video_path)
+            .output(audio_path, output_path, vcodec='copy', acodec='copy')
+            .run(overwrite_output=True)
+        )
         return True
     except Exception as e:
         st.error(f"Errore durante l'unione di video e audio: {str(e)}")
