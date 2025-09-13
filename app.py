@@ -241,9 +241,13 @@ def merge_audio_video(video_path, audio_path, output_path):
         input_video = ffmpeg.input(video_path)
         input_audio = ffmpeg.input(audio_path)
         
-        ffmpeg.output(input_video, input_audio, output_path, vcodec='copy', acodec='copy').run(overwrite_output=True)
+        # Unisce i due flussi (video e audio) ricodificando l'audio in AAC
+        ffmpeg.output(input_video, input_audio, output_path, vcodec='copy', acodec='aac').run(overwrite_output=True)
         
         return True
+    except ffmpeg.Error as e:
+        st.error(f"Errore durante l'unione di video e audio: {e.stderr.decode('utf8')}")
+        return False
     except Exception as e:
         st.error(f"Errore durante l'unione di video e audio: {str(e)}")
         return False
