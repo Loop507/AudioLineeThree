@@ -11,6 +11,7 @@ import os
 from scipy import signal
 from scipy.interpolate import CubicSpline
 import time
+from moviepy.editor import VideoFileClip, AudioFileClip
 
 # Configurazione della pagina
 st.set_page_config(
@@ -289,43 +290,34 @@ def draw_chaotic_frame(width, height, params, color_palette):
     # Converti la figura in un array numpy usando la funzione helper
     return fig_to_array(fig)
 
-# Funzione principale per generare il video
-def generate_video(audio_path, width, height, fps, style, color_palette):
-    """Genera un video dall'audio con visualizzazioni algoritmiche"""
+# Funzione principale per generare il video senza audio
+def generate_video_frames(audio_path, width, height, fps, style, color_palette):
+    """Genera un video senza audio dall'audio con visualizzazioni algoritmiche"""
     try:
-        # Carica l'audio per ottenere la durata effettiva
         y, sr = librosa.load(audio_path)
         video_duration = len(y) / sr
         
-        # Calcola i parametri per l'analisi audio
         total_frames = int(video_duration * fps)
-        hop_length = max(1, len(y) // total_frames)  # Evita hop_length zero
+        hop_length = max(1, len(y) // total_frames)
         frame_size = 2048
         
-        # Estrai le features audio
         features = extract_audio_features(y, sr, frame_size, hop_length)
         
-        # Crea un file temporaneo per il video
         temp_video = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         temp_video_path = temp_video.name
         temp_video.close()
         
-        # Inizializza il writer video
         writer = imageio.get_writer(temp_video_path, fps=fps, macro_block_size=1)
         
-        # Barra di progresso
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # Genera ogni frame
         for i in range(total_frames):
-            # Prendi le features per questo frame
             frame_features = {}
             for key in features:
                 idx = min(i, len(features[key]) - 1)
                 frame_features[key] = features[key][idx]
             
-            # Scegli la funzione di rendering in base allo stile
             if style == "Geometrico":
                 frame = draw_geometric_frame(width, height, frame_features, color_palette)
             elif style == "Organico":
@@ -335,18 +327,14 @@ def generate_video(audio_path, width, height, fps, style, color_palette):
             elif style == "Caotico":
                 frame = draw_chaotic_frame(width, height, frame_features, color_palette)
             
-            # Aggiungi il frame al video
             writer.append_data(frame)
             
-            # Aggiorna la barra di progresso
             progress = (i + 1) / total_frames
             progress_bar.progress(progress)
             status_text.text(f"Generazione frame {i+1}/{total_frames} - Durata: {video_duration:.1f}s")
         
-        # Chiudi il writer
         writer.close()
         
-        # Ripristina la barra di progresso
         progress_bar.empty()
         status_text.empty()
         
@@ -356,57 +344,89 @@ def generate_video(audio_path, width, height, fps, style, color_palette):
         st.error(f"Errore durante la generazione del video: {str(e)}")
         return None
 
+def merge_audio_video(video_path, audio_path, output_path):
+    """Unisce un file video con un file audio usando moviepy."""
+    try:
+        video_clip = VideoFileClip(video_path)
+        audio_clip = AudioFileClip(audio_path)
+        
+        final_clip = video_clip.set_audio(audio_clip)
+        
+        final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        
+        video_clip.close()
+        audio_clip.close()
+        
+        return True
+    except Exception as e:
+        st.error(f"Errore durante l'unione di video e audio: {str(e)}")
+        return False
+
 # Main app logic
 if audio_file and generate_button:
-    # Salva il file audio temporaneamente
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_audio:
-        tmp_audio.write(audio_file.read())
-        audio_path = tmp_audio.name
+    # Salva i file temporaneamente
+    audio_path = None
+    video_path_no_audio = None
+    final_video_path = None
     
     try:
-        # Genera il video
-        with st.spinner("Generazione del video in corso..."):
-            video_path = generate_video(
+        # Salva il file audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{audio_file.type.split("/")[-1]}') as tmp_audio:
+            tmp_audio.write(audio_file.read())
+            audio_path = tmp_audio.name
+            
+        # Genera il video senza audio
+        with st.spinner("Generazione dei frame video..."):
+            video_path_no_audio = generate_video_frames(
                 audio_path, width, height, fps, style, color_palette
             )
         
-        if video_path and os.path.exists(video_path):
-            # Mostra il video
-            st.success("Video generato con successo!")
-            st.video(video_path)
+        if video_path_no_audio and os.path.exists(video_path_no_audio):
+            # Unisci il video con l'audio
+            st.info("Unione di video e audio...")
             
-            # Pulsante per scaricare il video
-            try:
-                with open(video_path, "rb") as f:
-                    video_data = f.read()
+            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            final_video_path = temp_output.name
+            temp_output.close()
+
+            if merge_audio_video(video_path_no_audio, audio_path, final_video_path):
+                st.success("Video generato con successo!")
                 
-                # Nome del file basato sul formato
-                ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
-                file_name = f"AudioLinee2_{ratio_name}.mp4"
+                # Mostra il video
+                st.video(final_video_path)
                 
-                st.download_button(
-                    label="Scarica Video",
-                    data=video_data,
-                    file_name=file_name,
-                    mime="video/mp4"
-                )
-            except Exception as e:
-                st.error(f"Errore durante la preparazione del download: {str(e)}")
+                # Pulsante per scaricare il video
+                try:
+                    with open(final_video_path, "rb") as f:
+                        video_data = f.read()
+                    
+                    ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
+                    file_name = f"AudioLinee2_{ratio_name}.mp4"
+                    
+                    st.download_button(
+                        label="Scarica Video",
+                        data=video_data,
+                        file_name=file_name,
+                        mime="video/mp4"
+                    )
+                except Exception as e:
+                    st.error(f"Errore durante la preparazione del download: {str(e)}")
+            else:
+                st.error("Si è verificato un errore durante l'unione di video e audio.")
         else:
             st.error("Impossibile generare il video. Riprova con un file audio diverso.")
-        
+    
     except Exception as e:
         st.error(f"Si è verificato un errore durante la generazione: {str(e)}")
     
     finally:
         # Pulizia file temporanei
-        try:
-            if os.path.exists(audio_path):
-                os.unlink(audio_path)
-            if 'video_path' in locals() and video_path and os.path.exists(video_path):
-                os.unlink(video_path)
-        except Exception as e:
-            st.warning(f"Impossibile eliminare i file temporanei: {str(e)}")
+        if audio_path and os.path.exists(audio_path):
+            os.unlink(audio_path)
+        if video_path_no_audio and os.path.exists(video_path_no_audio):
+            os.unlink(video_path_no_audio)
+        if final_video_path and os.path.exists(final_video_path):
+            os.unlink(final_video_path)
 
 else:
     # Mostra istruzioni e esempio
