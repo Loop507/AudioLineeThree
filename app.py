@@ -1,4 +1,4 @@
-import streamlit as st
+  import streamlit as st
 import numpy as np
 import librosa
 import matplotlib.pyplot as plt
@@ -123,6 +123,7 @@ def draw_geometric_frame(width, height, params, color_palette):
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
+    ax.set_facecolor('black')  # Sfondo nero
     fig.tight_layout(pad=0)
     
     # Estrai parametri
@@ -160,6 +161,7 @@ def draw_organic_frame(width, height, params, color_palette):
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
+    ax.set_facecolor('black')  # Sfondo nero
     fig.tight_layout(pad=0)
     
     # Estrai parametri
@@ -178,18 +180,22 @@ def draw_organic_frame(width, height, params, color_palette):
     
     # Crea una curva spline
     if len(x) > 3 and len(y) > 3:  # Assicurati di avere abbastanza punti
-        cs = CubicSpline(x, y)
-        xs = np.linspace(min(x), max(x), 200)
-        ys = cs(xs)
-        
-        # Crea segmenti di linea colorati
-        points = np.array([xs, ys]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-        
-        # Crea una mappa di colori
-        colors = create_color_palette(color_palette, len(segments))
-        lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
-        ax.add_collection(lc)
+        try:
+            cs = CubicSpline(x, y)
+            xs = np.linspace(min(x), max(x), 200)
+            ys = cs(xs)
+            
+            # Crea segmenti di linea colorati
+            points = np.array([xs, ys]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            
+            # Crea una mappa di colori
+            colors = create_color_palette(color_palette, len(segments))
+            lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
+            ax.add_collection(lc)
+        except Exception as e:
+            # Fallback: disegna una linea semplice
+            ax.plot(x, y, color='white', linewidth=2, alpha=0.8)
     
     # Converti la figura in un array numpy
     fig.canvas.draw()
@@ -221,6 +227,7 @@ def draw_chaotic_frame(width, height, params, color_palette):
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
+    ax.set_facecolor('black')  # Sfondo nero
     fig.tight_layout(pad=0)
     
     # Parametri basati sull'audio
@@ -238,7 +245,7 @@ def draw_chaotic_frame(width, height, params, color_palette):
         y = np.random.rand() * height
         
         # Dimensione influenzata dall'audio
-        size = (5 + np.random.rand() * 20) * size_variation
+        size = (5 + np.random.rand() * 20) * max(0.1, size_variation)  # Evita dimensioni zero
         
         # Forma influenzata dall'audio
         shape_type = int((params['zcr'] + np.random.rand()) * 3) % 3
@@ -271,63 +278,68 @@ def draw_chaotic_frame(width, height, params, color_palette):
 # Funzione principale per generare il video
 def generate_video(audio_path, duration, width, height, fps, style, color_palette):
     """Genera un video dall'audio con visualizzazioni algoritmiche"""
-    # Carica l'audio
-    y, sr = librosa.load(audio_path, duration=duration)
-    
-    # Calcola i parametri per l'analisi audio
-    total_frames = int(duration * fps)
-    hop_length = len(y) // total_frames
-    frame_size = 2048
-    
-    # Estrai le features audio
-    features = extract_audio_features(y, sr, frame_size, hop_length)
-    
-    # Crea un file temporaneo per il video
-    temp_video = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    temp_video_path = temp_video.name
-    temp_video.close()
-    
-    # Inizializza il writer video
-    writer = imageio.get_writer(temp_video_path, fps=fps, macro_block_size=1)
-    
-    # Barra di progresso
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    # Genera ogni frame
-    for i in range(total_frames):
-        # Prendi le features per questo frame
-        frame_features = {}
-        for key in features:
-            idx = min(i, len(features[key]) - 1)
-            frame_features[key] = features[key][idx]
+    try:
+        # Carica l'audio
+        y, sr = librosa.load(audio_path, duration=duration)
         
-        # Scegli la funzione di rendering in base allo stile
-        if style == "Geometrico":
-            frame = draw_geometric_frame(width, height, frame_features, color_palette)
-        elif style == "Organico":
-            frame = draw_organic_frame(width, height, frame_features, color_palette)
-        elif style == "Ibrido":
-            frame = draw_hybrid_frame(width, height, frame_features, color_palette)
-        elif style == "Caotico":
-            frame = draw_chaotic_frame(width, height, frame_features, color_palette)
+        # Calcola i parametri per l'analisi audio
+        total_frames = int(duration * fps)
+        hop_length = max(1, len(y) // total_frames)  # Evita hop_length zero
+        frame_size = 2048
         
-        # Aggiungi il frame al video
-        writer.append_data(frame)
+        # Estrai le features audio
+        features = extract_audio_features(y, sr, frame_size, hop_length)
         
-        # Aggiorna la barra di progresso
-        progress = (i + 1) / total_frames
-        progress_bar.progress(progress)
-        status_text.text(f"Generazione frame {i+1}/{total_frames}")
-    
-    # Chiudi il writer
-    writer.close()
-    
-    # Ripristina la barra di progresso
-    progress_bar.empty()
-    status_text.empty()
-    
-    return temp_video_path
+        # Crea un file temporaneo per il video
+        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        temp_video_path = temp_video.name
+        temp_video.close()
+        
+        # Inizializza il writer video
+        writer = imageio.get_writer(temp_video_path, fps=fps, macro_block_size=1)
+        
+        # Barra di progresso
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Genera ogni frame
+        for i in range(total_frames):
+            # Prendi le features per questo frame
+            frame_features = {}
+            for key in features:
+                idx = min(i, len(features[key]) - 1)
+                frame_features[key] = features[key][idx]
+            
+            # Scegli la funzione di rendering in base allo stile
+            if style == "Geometrico":
+                frame = draw_geometric_frame(width, height, frame_features, color_palette)
+            elif style == "Organico":
+                frame = draw_organic_frame(width, height, frame_features, color_palette)
+            elif style == "Ibrido":
+                frame = draw_hybrid_frame(width, height, frame_features, color_palette)
+            elif style == "Caotico":
+                frame = draw_chaotic_frame(width, height, frame_features, color_palette)
+            
+            # Aggiungi il frame al video
+            writer.append_data(frame)
+            
+            # Aggiorna la barra di progresso
+            progress = (i + 1) / total_frames
+            progress_bar.progress(progress)
+            status_text.text(f"Generazione frame {i+1}/{total_frames}")
+        
+        # Chiudi il writer
+        writer.close()
+        
+        # Ripristina la barra di progresso
+        progress_bar.empty()
+        status_text.empty()
+        
+        return temp_video_path
+        
+    except Exception as e:
+        st.error(f"Errore durante la generazione del video: {str(e)}")
+        return None
 
 # Main app logic
 if audio_file and generate_button:
@@ -343,33 +355,43 @@ if audio_file and generate_button:
                 audio_path, duration, width, height, fps, style, color_palette
             )
         
-        # Mostra il video
-        st.success("Video generato con successo!")
-        st.video(video_path)
-        
-        # Pulsante per scaricare il video
-        with open(video_path, "rb") as f:
-            video_data = f.read()
-        
-        # Nome del file basato sul formato
-        ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
-        file_name = f"AudioLinee2_{ratio_name}.mp4"
-        
-        st.download_button(
-            label="Scarica Video",
-            data=video_data,
-            file_name=file_name,
-            mime="video/mp4"
-        )
+        if video_path and os.path.exists(video_path):
+            # Mostra il video
+            st.success("Video generato con successo!")
+            st.video(video_path)
+            
+            # Pulsante per scaricare il video
+            try:
+                with open(video_path, "rb") as f:
+                    video_data = f.read()
+                
+                # Nome del file basato sul formato
+                ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
+                file_name = f"AudioLinee2_{ratio_name}.mp4"
+                
+                st.download_button(
+                    label="Scarica Video",
+                    data=video_data,
+                    file_name=file_name,
+                    mime="video/mp4"
+                )
+            except Exception as e:
+                st.error(f"Errore durante la preparazione del download: {str(e)}")
+        else:
+            st.error("Impossibile generare il video. Riprova con un file audio diverso.")
         
     except Exception as e:
         st.error(f"Si è verificato un errore durante la generazione: {str(e)}")
     
     finally:
         # Pulizia file temporanei
-        os.unlink(audio_path)
-        if 'video_path' in locals():
-            os.unlink(video_path)
+        try:
+            if os.path.exists(audio_path):
+                os.unlink(audio_path)
+            if 'video_path' in locals() and video_path and os.path.exists(video_path):
+                os.unlink(video_path)
+        except Exception as e:
+            st.warning(f"Impossibile eliminare i file temporanei: {str(e)}")
 
 else:
     # Mostra istruzioni e esempio
@@ -387,13 +409,19 @@ else:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.image("https://via.placeholder.com/300x300?text=1:1+Square", caption="Formato 1:1 (Quadrato)")
+        st.write("**Formato 1:1 (Quadrato)**")
+        st.write("Perfetto per Instagram e social media")
+        st.write("Dimensioni: 800x800 px")
         
     with col2:
-        st.image("https://via.placeholder.com/300x533?text=9:16+Vertical", caption="Formato 9:16 (Verticale)")
+        st.write("**Formato 9:16 (Verticale)**")
+        st.write("Ideale per TikTok e Instagram Stories")
+        st.write("Dimensioni: 540x960 px")
         
     with col3:
-        st.image("https://via.placeholder.com/533x300?text=16:9+Horizontal", caption="Formato 16:9 (Orizzontale)")
+        st.write("**Formato 16:9 (Orizzontale)**")
+        st.write("Perfetto per YouTube e presentazioni")
+        st.write("Dimensioni: 1280x720 px")
 
 # Footer
 st.markdown("---")
@@ -401,6 +429,7 @@ st.markdown(
     """
     <div style='text-align: center'>
         <p>AudioLinee2 by Loop507 - Realizzato con Python e Streamlit</p>
+        <p>Converte file audio in visualizzazioni artistiche algoritmiche</p>
     </div>
     """,
     unsafe_allow_html=True
