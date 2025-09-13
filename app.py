@@ -37,7 +37,7 @@ with st.sidebar:
     
     # Parametri di configurazione
     st.subheader("Parametri Video")
-    duration = st.slider("Durata video (secondi)", 5, 60, 15)
+    st.info("💡 Il video avrà automaticamente la stessa durata del file audio caricato")
     
     # Selezione del formato di esportazione
     aspect_ratio = st.selectbox(
@@ -198,6 +198,30 @@ def draw_organic_frame(width, height, params, color_palette):
     img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     plt.close(fig)
     
+    return img
+
+# Funzione helper per convertire matplotlib figure in array numpy (duplicata per sicurezza)
+def fig_to_array(fig):
+    """Converte una figura matplotlib in un array numpy"""
+    fig.canvas.draw()
+    
+    # Prova prima il metodo moderno, poi quello deprecato come fallback
+    try:
+        # Metodo per matplotlib >= 3.8
+        img = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+        img = img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+        img = img[:, :, :3]  # Rimuovi il canale alpha
+    except AttributeError:
+        try:
+            # Metodo deprecato ma ancora supportato
+            img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        except AttributeError:
+            # Ultimo fallback
+            img = np.array(fig.canvas.renderer.buffer_rgba())
+            img = img[:, :, :3]  # Rimuovi il canale alpha
+    
+    plt.close(fig)
     return img
 
 def draw_hybrid_frame(width, height, params, color_palette):
@@ -426,4 +450,4 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
-)    
+)
