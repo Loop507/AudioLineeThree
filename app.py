@@ -54,7 +54,7 @@ with st.sidebar:
     st.subheader("Stile Artistico")
     style = st.selectbox(
         "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale"]
+        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante"]
     )
     
     color_palette = st.selectbox(
@@ -295,6 +295,97 @@ def draw_chaotic_frame(width, height, params, color_palette):
             ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
+def draw_parabola_frame(width, height, params, color_palette):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor('black')
+    fig.tight_layout(pad=0)
+
+    num_lines = int(50 + params['rms'] * 100)
+    distortion = 1.0 + params['centroid'] * 2.0
+    
+    colors = create_color_palette(color_palette, num_lines)
+    
+    t = np.linspace(0, width, num_lines)
+    
+    # Punti sulla prima retta (asse x distorto)
+    points_line1_x = t
+    points_line1_y = np.zeros(num_lines) + params['bandwidth'] * height * 0.1
+    
+    # Punti sulla seconda retta (asse y distorto)
+    points_line2_x = np.zeros(num_lines) + params['rms'] * width * 0.1
+    points_line2_y = np.linspace(0, height, num_lines)
+
+    for i in range(num_lines):
+        x1 = points_line1_x[i]
+        y1 = points_line1_y[i]
+        
+        x2 = points_line2_x[num_lines - 1 - i]
+        y2 = points_line2_y[num_lines - 1 - i]
+        
+        ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
+    
+    return fig_to_array(fig)
+
+def draw_ellipse_frame(width, height, params, color_palette):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor('black')
+    fig.tight_layout(pad=0)
+    
+    num_lines = int(50 + params['rms'] * 150)
+    radius = 200 + params['centroid'] * 150
+    
+    center_x, center_y = width / 2, height / 2
+    
+    colors = create_color_palette(color_palette, num_lines)
+    
+    theta = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
+    x_circle = radius * np.cos(theta) + center_x
+    y_circle = radius * np.sin(theta) + center_y
+
+    for i in range(num_lines // 2):
+        x_values = [x_circle[i], x_circle[i + num_lines//2]]
+        y_values = [y_circle[i], y_circle[i + num_lines//2]]
+        ax.plot(x_values, y_values, color=colors[i], linewidth=1.5, alpha=0.8)
+        
+    return fig_to_array(fig)
+    
+def draw_cardioide_frame(width, height, params, color_palette):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor('black')
+    fig.tight_layout(pad=0)
+    
+    num_points = int(50 + params['rms'] * 150)
+    multiplier = 2 + params['centroid'] * 5
+    scale = 200 + params['bandwidth'] * 100
+    
+    center_x, center_y = width / 2, height / 2
+
+    t = np.linspace(0, 2 * np.pi, num_points)
+    x = scale * np.cos(t) + center_x
+    y = scale * np.sin(t) + center_y
+    
+    colors = create_color_palette(color_palette, num_points)
+
+    for i in range(num_points):
+        source_index = i
+        target_index = int((multiplier * i) % num_points)
+        
+        ax.plot([x[source_index], x[target_index]], 
+                [y[source_index], y[target_index]], 
+                color=colors[i], linewidth=1, alpha=0.7)
+
+    return fig_to_array(fig)
+
+
 def add_text_to_frame(frame, text, pos, size, color):
     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
     
@@ -367,6 +458,12 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
                 frame = draw_corner_frame(width, height, frame_features, color_palette)
             elif style == "Rifrazione Radiale":
                 frame = draw_radial_refraction_frame(width, height, frame_features, color_palette)
+            elif style == "Parabola Dinamica":
+                frame = draw_parabola_frame(width, height, frame_features, color_palette)
+            elif style == "Ellisse/Cerchio":
+                frame = draw_ellipse_frame(width, height, frame_features, color_palette)
+            elif style == "Cardioide Pulsante":
+                frame = draw_cardioide_frame(width, height, frame_features, color_palette)
 
             if title_params and title_params.get('text'):
                 frame = add_text_to_frame(
