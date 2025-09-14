@@ -38,58 +38,65 @@ che si evolvono con il suono.
 # Sidebar per i controlli
 with st.sidebar:
     st.header("Controlli")
-
+    
     audio_file = st.file_uploader("Carica un file audio", type=['wav', 'mp3', 'ogg', 'flac'])
-
+    
     st.subheader("Parametri Video")
-
+    
     aspect_ratio = st.selectbox(
         "Formato di esportazione",
         ["1:1 (Quadrato)", "9:16 (Verticale)", "16:9 (Orizzontale)"]
     )
-
+    
     if aspect_ratio == "1:1 (Quadrato)":
         width, height = 800, 800
     elif aspect_ratio == "9:16 (Verticale)":
         width, height = 540, 960
     else:
         width, height = 1280, 720
-
+        
     fps = st.slider("FPS", 10, 60, 24)
-
+    
     st.subheader("Stile Artistico")
     style = st.selectbox(
         "Seleziona lo stile",
         ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante"]
     )
-
+    
     color_palette_option = st.selectbox(
         "Palette di colori",
         ["Arcobaleno", "Pastello", "Monocromatico", "Neon", "Personalizza"]
     )
-
+    
     bg_color = '#000000'
-    line_color = '#FFFFFF'
-
+    line_colors = None
+    
     if color_palette_option == "Personalizza":
         st.markdown("Scegli i tuoi colori personalizzati")
         bg_color = st.color_picker("Colore Sfondo", '#000000')
-        line_color = st.color_picker("Colore Linee/Animazione", '#FFD700')
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            low_freq_color = st.color_picker("Colore Basse Frequenze", '#007FFF')
+        with col2:
+            mid_freq_color = st.color_picker("Colore Medie Frequenze", '#32CD32')
+        with col3:
+            high_freq_color = st.color_picker("Colore Alte Frequenze", '#FF4500')
+        line_colors = [low_freq_color, mid_freq_color, high_freq_color]
 
     # Sezione per il titolo
     st.subheader("Titolo Video")
-
+    
     enable_title = st.checkbox("Abilita Titolo")
-
+    
     if enable_title:
         title_text = st.text_input("Testo del Titolo", value="Il Mio Titolo")
-
+        
         col_pos1, col_pos2 = st.columns(2)
         with col_pos1:
             title_v_pos = st.selectbox("Posizione Verticale", ["Sopra", "Sotto"])
         with col_pos2:
             title_h_pos = st.selectbox("Posizione Orizzontale", ["Sinistra", "Destra"])
-
+            
         col_style1, col_style2 = st.columns(2)
         with col_style1:
             title_size = st.slider("Dimensione Testo", 20, 100, 40)
@@ -114,7 +121,7 @@ def extract_audio_features(y, sr, frame_size, hop_length):
     return features
 
 # Funzioni di rendering
-def create_color_palette(palette_name, n_colors, custom_color=None):
+def create_color_palette(palette_name, n_colors, custom_colors=None):
     if palette_name == "Arcobaleno":
         return plt.cm.rainbow(np.linspace(0, 1, n_colors))
     elif palette_name == "Pastello":
@@ -130,17 +137,29 @@ def create_color_palette(palette_name, n_colors, custom_color=None):
             b = np.sin(0.3 * i + 4) * 0.5 + 0.5
             colors.append([r, g, b, 1.0])
         return np.array(colors)
-    elif palette_name == "Personalizza" and custom_color:
-        r, g, b = hex_to_rgb_norm(custom_color)
-        h, s, v = rgb_to_hsv(r, g, b)
+    elif palette_name == "Personalizza" and custom_colors and len(custom_colors) == 3:
+        r1, g1, b1 = hex_to_rgb_norm(custom_colors[0])
+        r2, g2, b2 = hex_to_rgb_norm(custom_colors[1])
+        r3, g3, b3 = hex_to_rgb_norm(custom_colors[2])
+        
         colors = []
         for i in range(n_colors):
-            # Variazione leggera di tonalità e saturazione per un effetto di gradiente
-            h_var = (h + i * 0.1) % 1.0 
-            s_var = min(1.0, s + i * 0.05)
-            r_new, g_new, b_new = hsv_to_rgb(h_var, s_var, v)
+            t = i / (n_colors - 1)
+            if t < 0.5:
+                # Transizione da basse a medie frequenze
+                r_new = r1 + (r2 - r1) * t * 2
+                g_new = g1 + (g2 - g1) * t * 2
+                b_new = b1 + (b2 - b1) * t * 2
+            else:
+                # Transizione da medie a alte frequenze
+                r_new = r2 + (r3 - r2) * (t - 0.5) * 2
+                g_new = g2 + (g3 - g2) * (t - 0.5) * 2
+                b_new = b2 + (b3 - b2) * (t - 0.5) * 2
             colors.append([r_new, g_new, b_new, 1.0])
         return np.array(colors)
+    else:
+        # Fallback to a default palette
+        return plt.cm.viridis(np.linspace(0, 1, n_colors))
 
 def fig_to_array(fig):
     fig.canvas.draw()
@@ -149,6 +168,30 @@ def fig_to_array(fig):
     plt.close(fig)
     return img
 
+def get_blended_color(params, colors):
+    if not isinstance(colors, np.ndarray):
+        # Fallback for predefined palettes
+        return colors
+    
+    low_color = colors[0]
+    mid_color = colors[1]
+    high_color = colors[2]
+
+    # Mescola i colori in base alle features audio
+    # L'intensità (RMS) influenza il mix tra basso e alto
+    # La luminosità spettrale (Centroid) influenza il mix tra medio e alto
+    
+    rms_weight = params['rms']
+    centroid_weight = params['centroid']
+    
+    # Blenda il colore di base (basse frequenze) con il colore intermedio
+    base_blended = low_color * (1 - rms_weight) + mid_color * rms_weight
+    
+    # Blenda il risultato con il colore delle alte frequenze
+    final_color = base_blended * (1 - centroid_weight) + high_color * centroid_weight
+    
+    return final_color
+
 def draw_geometric_frame(width, height, params, color_palette, bg_color):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
@@ -156,15 +199,28 @@ def draw_geometric_frame(width, height, params, color_palette, bg_color):
     ax.axis('off')
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
+    
     num_lines = int(20 + params['rms'] * 100)
     distortion = params['centroid'] * 2
-    colors = color_palette(num_lines)
+    
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_lines)
+    else:
+        colors = color_palette
+        
     for i in range(num_lines):
         x1 = i * (width / num_lines)
         y1 = 0
         x2 = width - (i * (width / num_lines))
         y2 = height + np.sin(i * 0.2) * distortion * 50
-        ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
+        
+        if isinstance(color_palette, str):
+            color_to_use = colors[i]
+        else:
+            # blending for custom colors
+            color_to_use = get_blended_color(params, colors)
+        
+        ax.plot([x1, x2], [y1, y2], color=color_to_use, linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
 
 def draw_curve_stitching_frame(width, height, params, color_palette, bg_color):
@@ -176,14 +232,14 @@ def draw_curve_stitching_frame(width, height, params, color_palette, bg_color):
     fig.tight_layout(pad=0)
 
     num_segments = int(50 + params['rms'] * 150)
-    colors = color_palette(num_segments)
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_segments)
+    else:
+        colors = color_palette
     
     for i in range(num_segments):
-        # Punti di partenza e arrivo
         start_x, start_y = 0, np.linspace(0, height, num_segments)[i]
         end_x, end_y = np.linspace(0, width, num_segments)[num_segments - 1 - i], 0
-        
-        # Punti di controllo per la curva. Il punto intermedio si sposta con la musica.
         control_x = (start_x + end_x) / 2 + params['centroid'] * width * 0.2
         control_y = (start_y + end_y) / 2 + params['bandwidth'] * height * 0.2
 
@@ -191,7 +247,12 @@ def draw_curve_stitching_frame(width, height, params, color_palette, bg_color):
         codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
         
         path = Path(verts, codes)
-        patch = PathPatch(path, facecolor='none', lw=2, edgecolor=colors[i], alpha=0.8)
+        if isinstance(color_palette, str):
+            color_to_use = colors[i]
+        else:
+            color_to_use = get_blended_color(params, colors)
+
+        patch = PathPatch(path, facecolor='none', lw=2, edgecolor=color_to_use, alpha=0.8)
         ax.add_patch(patch)
     
     return fig_to_array(fig)
@@ -209,22 +270,21 @@ def draw_corner_frame(width, height, params, color_palette, bg_color):
     x_points = np.linspace(0, width, num_lines)
     y_points = np.linspace(0, height, num_lines)
     
-    colors = color_palette(num_lines)
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_lines)
+    else:
+        colors = color_palette
     
     for i in range(num_lines):
-        color = colors[i % len(colors)]
+        if isinstance(color_palette, str):
+            color_to_use = colors[i % len(colors)]
+        else:
+            color_to_use = get_blended_color(params, colors)
         
-        # Angolo in alto a sinistra
-        ax.plot([0, x_points[i]], [height, y_points[i]], color=color, linewidth=1.5, alpha=0.8)
-        
-        # Angolo in alto a destra
-        ax.plot([width, x_points[num_lines - 1 - i]], [height, y_points[i]], color=color, linewidth=1.5, alpha=0.8)
-        
-        # Angolo in basso a sinistra
-        ax.plot([0, x_points[i]], [0, y_points[num_lines - 1 - i]], color=color, linewidth=1.5, alpha=0.8)
-
-        # Angolo in basso a destra
-        ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color, linewidth=1.5, alpha=0.8)
+        ax.plot([0, x_points[i]], [height, y_points[i]], color=color_to_use, linewidth=1.5, alpha=0.8)
+        ax.plot([width, x_points[num_lines - 1 - i]], [height, y_points[i]], color=color_to_use, linewidth=1.5, alpha=0.8)
+        ax.plot([0, x_points[i]], [0, y_points[num_lines - 1 - i]], color=color_to_use, linewidth=1.5, alpha=0.8)
+        ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color_to_use, linewidth=1.5, alpha=0.8)
     
     return fig_to_array(fig)
 
@@ -237,12 +297,13 @@ def draw_radial_refraction_frame(width, height, params, color_palette, bg_color)
     fig.tight_layout(pad=0)
     
     center_x, center_y = width / 2, height / 2
-    
     num_lines = int(20 + params['rms'] * 80)
-    
     line_length = 50 + params['centroid'] * 100
     
-    colors = color_palette(num_lines)
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_lines)
+    else:
+        colors = color_palette
     
     for i in range(num_lines):
         angle = (i / num_lines) * 2 * np.pi
@@ -250,7 +311,12 @@ def draw_radial_refraction_frame(width, height, params, color_palette, bg_color)
         end_x = center_x + line_length * np.cos(angle)
         end_y = center_y + line_length * np.sin(angle)
         
-        ax.plot([center_x, end_x], [center_y, end_y], color=colors[i], linewidth=2, alpha=0.7)
+        if isinstance(color_palette, str):
+            color_to_use = colors[i]
+        else:
+            color_to_use = get_blended_color(params, colors)
+        
+        ax.plot([center_x, end_x], [center_y, end_y], color=color_to_use, linewidth=2, alpha=0.7)
         
     return fig_to_array(fig)
 
@@ -276,11 +342,21 @@ def draw_organic_frame(width, height, params, color_palette, bg_color):
             ys = cs(xs)
             points = np.array([xs, ys]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            colors = color_palette(len(segments))
-            lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
+
+            if isinstance(color_palette, str):
+                colors = create_color_palette(color_palette, len(segments))
+                lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
+            else:
+                color_to_use = get_blended_color(params, color_palette)
+                lc = LineCollection(segments, colors=[color_to_use], linewidth=2, alpha=0.8)
+            
             ax.add_collection(lc)
         except Exception:
-            ax.plot(x, y, color='white', linewidth=2, alpha=0.8)
+            if isinstance(color_palette, str):
+                color_to_use = "white"
+            else:
+                color_to_use = get_blended_color(params, color_palette)
+            ax.plot(x, y, color=color_to_use, linewidth=2, alpha=0.8)
     return fig_to_array(fig)
 
 def draw_hybrid_frame(width, height, params, color_palette, bg_color):
@@ -300,23 +376,34 @@ def draw_chaotic_frame(width, height, params, color_palette, bg_color):
     fig.tight_layout(pad=0)
     num_elements = int(100 + params['rms'] * 200)
     size_variation = params['centroid'] * 3
-    colors = color_palette(num_elements)
+    
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_elements)
+    else:
+        colors = color_palette
+    
     for i in range(num_elements):
         x = np.random.rand() * width
         y = np.random.rand() * height
         size = (5 + np.random.rand() * 20) * max(0.1, size_variation)
         shape_type = int((params['zcr'] + np.random.rand()) * 3) % 3
+        
+        if isinstance(color_palette, str):
+            color_to_use = colors[i % len(colors)]
+        else:
+            color_to_use = get_blended_color(params, colors)
+        
         if shape_type == 0:
-            circle = plt.Circle((x, y), size, color=colors[i % len(colors)], alpha=0.6)
+            circle = plt.Circle((x, y), size, color=color_to_use, alpha=0.6)
             ax.add_patch(circle)
         elif shape_type == 1:
-            rect = plt.Rectangle((x-size/2, y-size/2), size, size, color=colors[i % len(colors)], alpha=0.6)
+            rect = plt.Rectangle((x-size/2, y-size/2), size, size, color=color_to_use, alpha=0.6)
             ax.add_patch(rect)
         else:
             angle = np.random.rand() * 2 * np.pi
             dx = np.cos(angle) * size
             dy = np.sin(angle) * size
-            ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], linewidth=2, alpha=0.7)
+            ax.plot([x, x+dx], [y, y+dy], color=color_to_use, linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
 def draw_parabola_frame(width, height, params, color_palette, bg_color):
@@ -329,27 +416,29 @@ def draw_parabola_frame(width, height, params, color_palette, bg_color):
 
     num_lines = int(50 + params['rms'] * 150)
     
-    colors = color_palette(num_lines)
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_lines)
+    else:
+        colors = color_palette
 
-    # Crea due "curve" dinamiche invece di due rette fisse
     t = np.linspace(0, 1, num_lines)
-    
-    # La prima curva si basa sulla distorsione della larghezza
     x_curve1 = t * width
     y_curve1 = params['rms'] * height * np.sin(t * np.pi * 2 + params['centroid'] * 5)
-    
-    # La seconda curva si basa sulla distorsione dell'altezza
     x_curve2 = width * (1 - t)
     y_curve2 = height + params['bandwidth'] * height * np.cos(t * np.pi * 2 + params['zcr'] * 5)
 
     for i in range(num_lines):
         x1 = x_curve1[i]
         y1 = y_curve1[i]
-        
         x2 = x_curve2[num_lines - 1 - i]
         y2 = y_curve2[num_lines - 1 - i]
         
-        ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
+        if isinstance(color_palette, str):
+            color_to_use = colors[i]
+        else:
+            color_to_use = get_blended_color(params, colors)
+        
+        ax.plot([x1, x2], [y1, y2], color=color_to_use, linewidth=1.5, alpha=0.8)
     
     return fig_to_array(fig)
 
@@ -363,10 +452,12 @@ def draw_ellipse_frame(width, height, params, color_palette, bg_color):
     
     num_lines = int(50 + params['rms'] * 150)
     radius = 200 + params['centroid'] * 150
-    
     center_x, center_y = width / 2, height / 2
     
-    colors = color_palette(num_lines)
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_lines)
+    else:
+        colors = color_palette
     
     theta = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
     x_circle = radius * np.cos(theta) + center_x
@@ -375,7 +466,13 @@ def draw_ellipse_frame(width, height, params, color_palette, bg_color):
     for i in range(num_lines // 2):
         x_values = [x_circle[i], x_circle[i + num_lines//2]]
         y_values = [y_circle[i], y_circle[i + num_lines//2]]
-        ax.plot(x_values, y_values, color=colors[i], linewidth=1.5, alpha=0.8)
+        
+        if isinstance(color_palette, str):
+            color_to_use = colors[i]
+        else:
+            color_to_use = get_blended_color(params, colors)
+            
+        ax.plot(x_values, y_values, color=color_to_use, linewidth=1.5, alpha=0.8)
         
     return fig_to_array(fig)
     
@@ -397,15 +494,23 @@ def draw_cardioide_frame(width, height, params, color_palette, bg_color):
     x = scale * np.cos(t) + center_x
     y = scale * np.sin(t) + center_y
     
-    colors = color_palette(num_points)
+    if isinstance(color_palette, str):
+        colors = create_color_palette(color_palette, num_points)
+    else:
+        colors = color_palette
 
     for i in range(num_points):
         source_index = i
         target_index = int((multiplier * i) % num_points)
         
+        if isinstance(color_palette, str):
+            color_to_use = colors[i]
+        else:
+            color_to_use = get_blended_color(params, colors)
+
         ax.plot([x[source_index], x[target_index]], 
                 [y[source_index], y[target_index]], 
-                color=colors[i], linewidth=1, alpha=0.7)
+                color=color_to_use, linewidth=1, alpha=0.7)
 
     return fig_to_array(fig)
 
@@ -445,7 +550,7 @@ def add_text_to_frame(frame, text, pos, size, color):
     
     return np.array(img_pil)
 
-def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_color, title_params=None):
+def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None):
     try:
         y, sr = librosa.load(audio_path)
         video_duration = len(y) / sr
@@ -465,32 +570,75 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        def palette_creator(n_colors):
-            return create_color_palette(color_palette_option, n_colors, custom_color=line_color)
-
         for i in range(total_frames):
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             
             if style == "Geometrico":
-                frame = draw_geometric_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_geometric_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Organico":
-                frame = draw_organic_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_organic_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Ibrido":
-                frame = draw_hybrid_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_hybrid_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Caotico":
-                frame = draw_chaotic_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_chaotic_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Cucitura di Curve":
-                frame = draw_curve_stitching_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_curve_stitching_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Partenza dagli Angoli":
-                frame = draw_corner_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_corner_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Rifrazione Radiale":
-                frame = draw_radial_refraction_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_radial_refraction_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Parabola Dinamica":
-                frame = draw_parabola_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_parabola_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Ellisse/Cerchio":
-                frame = draw_ellipse_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_ellipse_frame(width, height, frame_features, color_palette_option, bg_color)
             elif style == "Cardioide Pulsante":
-                frame = draw_cardioide_frame(width, height, frame_features, palette_creator, bg_color)
+                frame = draw_cardioide_frame(width, height, frame_features, color_palette_option, bg_color)
+            
+            if color_palette_option == "Personalizza":
+                # Questa parte è stata corretta per passare i colori personalizzati
+                # a tutte le funzioni di disegno
+                if style == "Geometrico":
+                    frame = draw_geometric_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Organico":
+                    frame = draw_organic_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Ibrido":
+                    frame = draw_hybrid_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Caotico":
+                    frame = draw_chaotic_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Cucitura di Curve":
+                    frame = draw_curve_stitching_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Partenza dagli Angoli":
+                    frame = draw_corner_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Rifrazione Radiale":
+                    frame = draw_radial_refraction_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Parabola Dinamica":
+                    frame = draw_parabola_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Ellisse/Cerchio":
+                    frame = draw_ellipse_frame(width, height, frame_features, line_colors, bg_color)
+                elif style == "Cardioide Pulsante":
+                    frame = draw_cardioide_frame(width, height, frame_features, line_colors, bg_color)
+            else:
+                # Usa le palette predefinite
+                if style == "Geometrico":
+                    frame = draw_geometric_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Organico":
+                    frame = draw_organic_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Ibrido":
+                    frame = draw_hybrid_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Caotico":
+                    frame = draw_chaotic_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Cucitura di Curve":
+                    frame = draw_curve_stitching_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Partenza dagli Angoli":
+                    frame = draw_corner_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Rifrazione Radiale":
+                    frame = draw_radial_refraction_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Parabola Dinamica":
+                    frame = draw_parabola_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Ellisse/Cerchio":
+                    frame = draw_ellipse_frame(width, height, frame_features, color_palette_option, bg_color)
+                elif style == "Cardioide Pulsante":
+                    frame = draw_cardioide_frame(width, height, frame_features, color_palette_option, bg_color)
 
             if title_params and title_params.get('text'):
                 frame = add_text_to_frame(
@@ -550,7 +698,7 @@ if audio_file and generate_button:
                 }
         
         with st.spinner("Generazione dei frame video in corso..."):
-            video_path_no_audio = generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_color, title_params)
+            video_path_no_audio = generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params)
         
         if video_path_no_audio and os.path.exists(video_path_no_audio):
             st.info("Unione di video e audio in corso...")
