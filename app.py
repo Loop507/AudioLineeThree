@@ -169,30 +169,27 @@ def fig_to_array(fig):
     return img
 
 def get_blended_color(params, colors):
-    if not isinstance(colors, np.ndarray):
-        # Fallback for predefined palettes
-        return colors
+    if not isinstance(colors, list) or len(colors) < 3:
+        # Fallback if colors are not correctly set
+        return hex_to_rgb_norm('#FFFFFF')
     
-    low_color = colors[0]
-    mid_color = colors[1]
-    high_color = colors[2]
+    low_color_rgb = hex_to_rgb_norm(colors[0])
+    mid_color_rgb = hex_to_rgb_norm(colors[1])
+    high_color_rgb = hex_to_rgb_norm(colors[2])
 
     # Mescola i colori in base alle features audio
-    # L'intensità (RMS) influenza il mix tra basso e alto
-    # La luminosità spettrale (Centroid) influenza il mix tra medio e alto
-    
     rms_weight = params['rms']
     centroid_weight = params['centroid']
     
     # Blenda il colore di base (basse frequenze) con il colore intermedio
-    base_blended = low_color * (1 - rms_weight) + mid_color * rms_weight
+    base_blended = np.array(low_color_rgb) * (1 - rms_weight) + np.array(mid_color_rgb) * rms_weight
     
     # Blenda il risultato con il colore delle alte frequenze
-    final_color = base_blended * (1 - centroid_weight) + high_color * centroid_weight
+    final_color = base_blended * (1 - centroid_weight) + np.array(high_color_rgb) * centroid_weight
     
-    return final_color
+    return tuple(final_color)
 
-def draw_geometric_frame(width, height, params, color_palette, bg_color):
+def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -203,27 +200,22 @@ def draw_geometric_frame(width, height, params, color_palette, bg_color):
     num_lines = int(20 + params['rms'] * 100)
     distortion = params['centroid'] * 2
     
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_lines)
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
+        ax.plot([0, width], [0, height], color=color_to_use, linewidth=1.5, alpha=0.8)
+        ax.plot([width, 0], [0, height], color=color_to_use, linewidth=1.5, alpha=0.8)
     else:
-        colors = color_palette
-        
-    for i in range(num_lines):
-        x1 = i * (width / num_lines)
-        y1 = 0
-        x2 = width - (i * (width / num_lines))
-        y2 = height + np.sin(i * 0.2) * distortion * 50
-        
-        if isinstance(color_palette, str):
-            color_to_use = colors[i]
-        else:
-            # blending for custom colors
-            color_to_use = get_blended_color(params, colors)
-        
-        ax.plot([x1, x2], [y1, y2], color=color_to_use, linewidth=1.5, alpha=0.8)
+        colors = create_color_palette(color_palette_option, num_lines)
+        for i in range(num_lines):
+            x1 = i * (width / num_lines)
+            y1 = 0
+            x2 = width - (i * (width / num_lines))
+            y2 = height + np.sin(i * 0.2) * distortion * 50
+            ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
 
-def draw_curve_stitching_frame(width, height, params, color_palette, bg_color):
+
+def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -232,10 +224,11 @@ def draw_curve_stitching_frame(width, height, params, color_palette, bg_color):
     fig.tight_layout(pad=0)
 
     num_segments = int(50 + params['rms'] * 150)
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_segments)
+    
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
     else:
-        colors = color_palette
+        colors = create_color_palette(color_palette_option, num_segments)
     
     for i in range(num_segments):
         start_x, start_y = 0, np.linspace(0, height, num_segments)[i]
@@ -247,17 +240,16 @@ def draw_curve_stitching_frame(width, height, params, color_palette, bg_color):
         codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
         
         path = Path(verts, codes)
-        if isinstance(color_palette, str):
-            color_to_use = colors[i]
+        
+        if color_palette_option == "Personalizza":
+            patch = PathPatch(path, facecolor='none', lw=2, edgecolor=color_to_use, alpha=0.8)
         else:
-            color_to_use = get_blended_color(params, colors)
-
-        patch = PathPatch(path, facecolor='none', lw=2, edgecolor=color_to_use, alpha=0.8)
+            patch = PathPatch(path, facecolor='none', lw=2, edgecolor=colors[i], alpha=0.8)
         ax.add_patch(patch)
     
     return fig_to_array(fig)
 
-def draw_corner_frame(width, height, params, color_palette, bg_color):
+def draw_corner_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -267,28 +259,28 @@ def draw_corner_frame(width, height, params, color_palette, bg_color):
 
     num_lines = int(20 + params['rms'] * 80)
     
-    x_points = np.linspace(0, width, num_lines)
-    y_points = np.linspace(0, height, num_lines)
-    
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_lines)
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
     else:
-        colors = color_palette
+        colors = create_color_palette(color_palette_option, num_lines)
     
     for i in range(num_lines):
-        if isinstance(color_palette, str):
-            color_to_use = colors[i % len(colors)]
+        if color_palette_option == "Personalizza":
+            color_to_apply = color_to_use
         else:
-            color_to_use = get_blended_color(params, colors)
+            color_to_apply = colors[i % len(colors)]
+            
+        x_points = np.linspace(0, width, num_lines)
+        y_points = np.linspace(0, height, num_lines)
         
-        ax.plot([0, x_points[i]], [height, y_points[i]], color=color_to_use, linewidth=1.5, alpha=0.8)
-        ax.plot([width, x_points[num_lines - 1 - i]], [height, y_points[i]], color=color_to_use, linewidth=1.5, alpha=0.8)
-        ax.plot([0, x_points[i]], [0, y_points[num_lines - 1 - i]], color=color_to_use, linewidth=1.5, alpha=0.8)
-        ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color_to_use, linewidth=1.5, alpha=0.8)
+        ax.plot([0, x_points[i]], [height, y_points[i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
+        ax.plot([width, x_points[num_lines - 1 - i]], [height, y_points[i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
+        ax.plot([0, x_points[i]], [0, y_points[num_lines - 1 - i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
+        ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
     
     return fig_to_array(fig)
 
-def draw_radial_refraction_frame(width, height, params, color_palette, bg_color):
+def draw_radial_refraction_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -300,27 +292,26 @@ def draw_radial_refraction_frame(width, height, params, color_palette, bg_color)
     num_lines = int(20 + params['rms'] * 80)
     line_length = 50 + params['centroid'] * 100
     
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_lines)
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
     else:
-        colors = color_palette
+        colors = create_color_palette(color_palette_option, num_lines)
     
     for i in range(num_lines):
         angle = (i / num_lines) * 2 * np.pi
-        
         end_x = center_x + line_length * np.cos(angle)
         end_y = center_y + line_length * np.sin(angle)
         
-        if isinstance(color_palette, str):
-            color_to_use = colors[i]
+        if color_palette_option == "Personalizza":
+            color_to_apply = color_to_use
         else:
-            color_to_use = get_blended_color(params, colors)
+            color_to_apply = colors[i]
         
-        ax.plot([center_x, end_x], [center_y, end_y], color=color_to_use, linewidth=2, alpha=0.7)
+        ax.plot([center_x, end_x], [center_y, end_y], color=color_to_apply, linewidth=2, alpha=0.7)
         
     return fig_to_array(fig)
 
-def draw_organic_frame(width, height, params, color_palette, bg_color):
+def draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -343,31 +334,31 @@ def draw_organic_frame(width, height, params, color_palette, bg_color):
             points = np.array([xs, ys]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-            if isinstance(color_palette, str):
-                colors = create_color_palette(color_palette, len(segments))
-                lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
-            else:
-                color_to_use = get_blended_color(params, color_palette)
+            if color_palette_option == "Personalizza":
+                color_to_use = get_blended_color(params, line_colors)
                 lc = LineCollection(segments, colors=[color_to_use], linewidth=2, alpha=0.8)
+            else:
+                colors = create_color_palette(color_palette_option, len(segments))
+                lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
             
             ax.add_collection(lc)
         except Exception:
-            if isinstance(color_palette, str):
-                color_to_use = "white"
+            if color_palette_option == "Personalizza":
+                color_to_use = get_blended_color(params, line_colors)
             else:
-                color_to_use = get_blended_color(params, color_palette)
+                color_to_use = "white"
             ax.plot(x, y, color=color_to_use, linewidth=2, alpha=0.8)
     return fig_to_array(fig)
 
-def draw_hybrid_frame(width, height, params, color_palette, bg_color):
+def draw_hybrid_frame(width, height, params, color_palette_option, bg_color, line_colors):
     geometric_weight = params['rms']
     organic_weight = 1 - geometric_weight
-    geometric_img = draw_geometric_frame(width, height, params, color_palette, bg_color)
-    organic_img = draw_organic_frame(width, height, params, color_palette, bg_color)
+    geometric_img = draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors)
+    organic_img = draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors)
     blended_img = cv2.addWeighted(geometric_img, geometric_weight, organic_img, organic_weight, 0)
     return blended_img
 
-def draw_chaotic_frame(width, height, params, color_palette, bg_color):
+def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -377,10 +368,10 @@ def draw_chaotic_frame(width, height, params, color_palette, bg_color):
     num_elements = int(100 + params['rms'] * 200)
     size_variation = params['centroid'] * 3
     
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_elements)
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
     else:
-        colors = color_palette
+        colors = create_color_palette(color_palette_option, num_elements)
     
     for i in range(num_elements):
         x = np.random.rand() * width
@@ -388,25 +379,25 @@ def draw_chaotic_frame(width, height, params, color_palette, bg_color):
         size = (5 + np.random.rand() * 20) * max(0.1, size_variation)
         shape_type = int((params['zcr'] + np.random.rand()) * 3) % 3
         
-        if isinstance(color_palette, str):
-            color_to_use = colors[i % len(colors)]
+        if color_palette_option == "Personalizza":
+            color_to_apply = color_to_use
         else:
-            color_to_use = get_blended_color(params, colors)
+            color_to_apply = colors[i % len(colors)]
         
         if shape_type == 0:
-            circle = plt.Circle((x, y), size, color=color_to_use, alpha=0.6)
+            circle = plt.Circle((x, y), size, color=color_to_apply, alpha=0.6)
             ax.add_patch(circle)
         elif shape_type == 1:
-            rect = plt.Rectangle((x-size/2, y-size/2), size, size, color=color_to_use, alpha=0.6)
+            rect = plt.Rectangle((x-size/2, y-size/2), size, size, color=color_to_apply, alpha=0.6)
             ax.add_patch(rect)
         else:
             angle = np.random.rand() * 2 * np.pi
             dx = np.cos(angle) * size
             dy = np.sin(angle) * size
-            ax.plot([x, x+dx], [y, y+dy], color=color_to_use, linewidth=2, alpha=0.7)
+            ax.plot([x, x+dx], [y, y+dy], color=color_to_apply, linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
-def draw_parabola_frame(width, height, params, color_palette, bg_color):
+def draw_parabola_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -416,10 +407,10 @@ def draw_parabola_frame(width, height, params, color_palette, bg_color):
 
     num_lines = int(50 + params['rms'] * 150)
     
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_lines)
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
     else:
-        colors = color_palette
+        colors = create_color_palette(color_palette_option, num_lines)
 
     t = np.linspace(0, 1, num_lines)
     x_curve1 = t * width
@@ -433,16 +424,16 @@ def draw_parabola_frame(width, height, params, color_palette, bg_color):
         x2 = x_curve2[num_lines - 1 - i]
         y2 = y_curve2[num_lines - 1 - i]
         
-        if isinstance(color_palette, str):
-            color_to_use = colors[i]
+        if color_palette_option == "Personalizza":
+            color_to_apply = color_to_use
         else:
-            color_to_use = get_blended_color(params, colors)
+            color_to_apply = colors[i]
         
-        ax.plot([x1, x2], [y1, y2], color=color_to_use, linewidth=1.5, alpha=0.8)
+        ax.plot([x1, x2], [y1, y2], color=color_to_apply, linewidth=1.5, alpha=0.8)
     
     return fig_to_array(fig)
 
-def draw_ellipse_frame(width, height, params, color_palette, bg_color):
+def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -454,10 +445,10 @@ def draw_ellipse_frame(width, height, params, color_palette, bg_color):
     radius = 200 + params['centroid'] * 150
     center_x, center_y = width / 2, height / 2
     
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_lines)
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
     else:
-        colors = color_palette
+        colors = create_color_palette(color_palette_option, num_lines)
     
     theta = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
     x_circle = radius * np.cos(theta) + center_x
@@ -467,16 +458,16 @@ def draw_ellipse_frame(width, height, params, color_palette, bg_color):
         x_values = [x_circle[i], x_circle[i + num_lines//2]]
         y_values = [y_circle[i], y_circle[i + num_lines//2]]
         
-        if isinstance(color_palette, str):
-            color_to_use = colors[i]
+        if color_palette_option == "Personalizza":
+            color_to_apply = color_to_use
         else:
-            color_to_use = get_blended_color(params, colors)
+            color_to_apply = colors[i]
             
-        ax.plot(x_values, y_values, color=color_to_use, linewidth=1.5, alpha=0.8)
+        ax.plot(x_values, y_values, color=color_to_apply, linewidth=1.5, alpha=0.8)
         
     return fig_to_array(fig)
     
-def draw_cardioide_frame(width, height, params, color_palette, bg_color):
+def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
@@ -494,23 +485,23 @@ def draw_cardioide_frame(width, height, params, color_palette, bg_color):
     x = scale * np.cos(t) + center_x
     y = scale * np.sin(t) + center_y
     
-    if isinstance(color_palette, str):
-        colors = create_color_palette(color_palette, num_points)
+    if color_palette_option == "Personalizza":
+        color_to_use = get_blended_color(params, line_colors)
     else:
-        colors = color_palette
+        colors = create_color_palette(color_palette_option, num_points)
 
     for i in range(num_points):
         source_index = i
         target_index = int((multiplier * i) % num_points)
         
-        if isinstance(color_palette, str):
-            color_to_use = colors[i]
+        if color_palette_option == "Personalizza":
+            color_to_apply = color_to_use
         else:
-            color_to_use = get_blended_color(params, colors)
+            color_to_apply = colors[i]
 
         ax.plot([x[source_index], x[target_index]], 
                 [y[source_index], y[target_index]], 
-                color=color_to_use, linewidth=1, alpha=0.7)
+                color=color_to_apply, linewidth=1, alpha=0.7)
 
     return fig_to_array(fig)
 
@@ -570,76 +561,32 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
         progress_bar = st.progress(0)
         status_text = st.empty()
         
+        drawing_functions = {
+            "Geometrico": draw_geometric_frame,
+            "Organico": draw_organic_frame,
+            "Ibrido": draw_hybrid_frame,
+            "Caotico": draw_chaotic_frame,
+            "Cucitura di Curve": draw_curve_stitching_frame,
+            "Partenza dagli Angoli": draw_corner_frame,
+            "Rifrazione Radiale": draw_radial_refraction_frame,
+            "Parabola Dinamica": draw_parabola_frame,
+            "Ellisse/Cerchio": draw_ellipse_frame,
+            "Cardioide Pulsante": draw_cardioide_frame
+        }
+
         for i in range(total_frames):
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             
-            if style == "Geometrico":
-                frame = draw_geometric_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Organico":
-                frame = draw_organic_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Ibrido":
-                frame = draw_hybrid_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Caotico":
-                frame = draw_chaotic_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Cucitura di Curve":
-                frame = draw_curve_stitching_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Partenza dagli Angoli":
-                frame = draw_corner_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Rifrazione Radiale":
-                frame = draw_radial_refraction_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Parabola Dinamica":
-                frame = draw_parabola_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Ellisse/Cerchio":
-                frame = draw_ellipse_frame(width, height, frame_features, color_palette_option, bg_color)
-            elif style == "Cardioide Pulsante":
-                frame = draw_cardioide_frame(width, height, frame_features, color_palette_option, bg_color)
+            if style in drawing_functions:
+                frame = drawing_functions[style](
+                    width,
+                    height,
+                    frame_features,
+                    color_palette_option,
+                    bg_color,
+                    line_colors
+                )
             
-            if color_palette_option == "Personalizza":
-                # Questa parte è stata corretta per passare i colori personalizzati
-                # a tutte le funzioni di disegno
-                if style == "Geometrico":
-                    frame = draw_geometric_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Organico":
-                    frame = draw_organic_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Ibrido":
-                    frame = draw_hybrid_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Caotico":
-                    frame = draw_chaotic_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Cucitura di Curve":
-                    frame = draw_curve_stitching_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Partenza dagli Angoli":
-                    frame = draw_corner_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Rifrazione Radiale":
-                    frame = draw_radial_refraction_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Parabola Dinamica":
-                    frame = draw_parabola_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Ellisse/Cerchio":
-                    frame = draw_ellipse_frame(width, height, frame_features, line_colors, bg_color)
-                elif style == "Cardioide Pulsante":
-                    frame = draw_cardioide_frame(width, height, frame_features, line_colors, bg_color)
-            else:
-                # Usa le palette predefinite
-                if style == "Geometrico":
-                    frame = draw_geometric_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Organico":
-                    frame = draw_organic_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Ibrido":
-                    frame = draw_hybrid_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Caotico":
-                    frame = draw_chaotic_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Cucitura di Curve":
-                    frame = draw_curve_stitching_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Partenza dagli Angoli":
-                    frame = draw_corner_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Rifrazione Radiale":
-                    frame = draw_radial_refraction_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Parabola Dinamica":
-                    frame = draw_parabola_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Ellisse/Cerchio":
-                    frame = draw_ellipse_frame(width, height, frame_features, color_palette_option, bg_color)
-                elif style == "Cardioide Pulsante":
-                    frame = draw_cardioide_frame(width, height, frame_features, color_palette_option, bg_color)
-
             if title_params and title_params.get('text'):
                 frame = add_text_to_frame(
                     frame,
