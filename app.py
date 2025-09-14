@@ -137,28 +137,7 @@ def create_color_palette(palette_name, n_colors, custom_colors=None):
             b = np.sin(0.3 * i + 4) * 0.5 + 0.5
             colors.append([r, g, b, 1.0])
         return np.array(colors)
-    elif palette_name == "Personalizza" and custom_colors and len(custom_colors) == 3:
-        r1, g1, b1 = hex_to_rgb_norm(custom_colors[0])
-        r2, g2, b2 = hex_to_rgb_norm(custom_colors[1])
-        r3, g3, b3 = hex_to_rgb_norm(custom_colors[2])
-        
-        colors = []
-        for i in range(n_colors):
-            t = i / (n_colors - 1)
-            if t < 0.5:
-                # Transizione da basse a medie frequenze
-                r_new = r1 + (r2 - r1) * t * 2
-                g_new = g1 + (g2 - g1) * t * 2
-                b_new = b1 + (b2 - b1) * t * 2
-            else:
-                # Transizione da medie a alte frequenze
-                r_new = r2 + (r3 - r2) * (t - 0.5) * 2
-                g_new = g2 + (g3 - g2) * (t - 0.5) * 2
-                b_new = b2 + (b3 - b2) * (t - 0.5) * 2
-            colors.append([r_new, g_new, b_new, 1.0])
-        return np.array(colors)
     else:
-        # Fallback to a default palette
         return plt.cm.viridis(np.linspace(0, 1, n_colors))
 
 def fig_to_array(fig):
@@ -170,21 +149,16 @@ def fig_to_array(fig):
 
 def get_blended_color(params, colors):
     if not isinstance(colors, list) or len(colors) < 3:
-        # Fallback if colors are not correctly set
         return hex_to_rgb_norm('#FFFFFF')
     
     low_color_rgb = hex_to_rgb_norm(colors[0])
     mid_color_rgb = hex_to_rgb_norm(colors[1])
     high_color_rgb = hex_to_rgb_norm(colors[2])
 
-    # Mescola i colori in base alle features audio
     rms_weight = params['rms']
     centroid_weight = params['centroid']
     
-    # Blenda il colore di base (basse frequenze) con il colore intermedio
     base_blended = np.array(low_color_rgb) * (1 - rms_weight) + np.array(mid_color_rgb) * rms_weight
-    
-    # Blenda il risultato con il colore delle alte frequenze
     final_color = base_blended * (1 - centroid_weight) + np.array(high_color_rgb) * centroid_weight
     
     return tuple(final_color)
@@ -213,7 +187,6 @@ def draw_geometric_frame(width, height, params, color_palette_option, bg_color, 
             y2 = height + np.sin(i * 0.2) * distortion * 50
             ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
-
 
 def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
