@@ -32,50 +32,50 @@ che si evolvono con il suono.
 # Sidebar per i controlli
 with st.sidebar:
     st.header("Controlli")
-    
+
     audio_file = st.file_uploader("Carica un file audio", type=['wav', 'mp3', 'ogg', 'flac'])
-    
+
     st.subheader("Parametri Video")
-    
+
     aspect_ratio = st.selectbox(
         "Formato di esportazione",
         ["1:1 (Quadrato)", "9:16 (Verticale)", "16:9 (Orizzontale)"]
     )
-    
+
     if aspect_ratio == "1:1 (Quadrato)":
         width, height = 800, 800
     elif aspect_ratio == "9:16 (Verticale)":
         width, height = 540, 960
     else:
         width, height = 1280, 720
-        
+
     fps = st.slider("FPS", 10, 60, 24)
-    
+
     st.subheader("Stile Artistico")
     style = st.selectbox(
         "Seleziona lo stile",
         ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante"]
     )
-    
+
     color_palette = st.selectbox(
         "Palette di colori",
         ["Arcobaleno", "Pastello", "Monocromatico", "Neon"]
     )
-    
+
     # Sezione per il titolo
     st.subheader("Titolo Video")
-    
+
     enable_title = st.checkbox("Abilita Titolo")
-    
+
     if enable_title:
         title_text = st.text_input("Testo del Titolo", value="Il Mio Titolo")
-        
+
         col_pos1, col_pos2 = st.columns(2)
         with col_pos1:
             title_v_pos = st.selectbox("Posizione Verticale", ["Sopra", "Sotto"])
         with col_pos2:
             title_h_pos = st.selectbox("Posizione Orizzontale", ["Sinistra", "Destra"])
-            
+
         col_style1, col_style2 = st.columns(2)
         with col_style1:
             title_size = st.slider("Dimensione Testo", 20, 100, 40)
@@ -92,11 +92,11 @@ def extract_audio_features(y, sr, frame_size, hop_length):
     features['centroid'] = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=frame_size, hop_length=hop_length)[0]
     features['bandwidth'] = librosa.feature.spectral_bandwidth(y=y, sr=sr, n_fft=frame_size, hop_length=hop_length)[0]
     features['zcr'] = librosa.feature.zero_crossing_rate(y, frame_length=frame_size, hop_length=hop_length)[0]
-    
+
     for key in features:
         if np.max(features[key]) > 0:
             features[key] = features[key] / np.max(features[key])
-    
+
     return features
 
 # Funzioni di rendering
@@ -152,23 +152,23 @@ def draw_curve_stitching_frame(width, height, params, color_palette):
 
     num_segments = int(50 + params['rms'] * 150)
     colors = create_color_palette(color_palette, num_segments)
-    
+
     for i in range(num_segments):
         # Punti di partenza e arrivo
         start_x, start_y = 0, np.linspace(0, height, num_segments)[i]
         end_x, end_y = np.linspace(0, width, num_segments)[num_segments - 1 - i], 0
-        
+
         # Punti di controllo per la curva. Il punto intermedio si sposta con la musica.
         control_x = (start_x + end_x) / 2 + params['centroid'] * width * 0.2
         control_y = (start_y + end_y) / 2 + params['bandwidth'] * height * 0.2
 
         verts = [(start_x, start_y), (control_x, control_y), (end_x, end_y)]
         codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
-        
+
         path = Path(verts, codes)
         patch = PathPatch(path, facecolor='none', lw=2, edgecolor=colors[i], alpha=0.8)
         ax.add_patch(patch)
-    
+
     return fig_to_array(fig)
 
 def draw_corner_frame(width, height, params, color_palette):
@@ -180,27 +180,27 @@ def draw_corner_frame(width, height, params, color_palette):
     fig.tight_layout(pad=0)
 
     num_lines = int(20 + params['rms'] * 80)
-    
+
     x_points = np.linspace(0, width, num_lines)
     y_points = np.linspace(0, height, num_lines)
-    
+
     colors = create_color_palette(color_palette, num_lines)
-    
+
     for i in range(num_lines):
         color = colors[i % len(colors)]
-        
+
         # Angolo in alto a sinistra
         ax.plot([0, x_points[i]], [height, y_points[i]], color=color, linewidth=1.5, alpha=0.8)
-        
+
         # Angolo in alto a destra
         ax.plot([width, x_points[num_lines - 1 - i]], [height, y_points[i]], color=color, linewidth=1.5, alpha=0.8)
-        
+
         # Angolo in basso a sinistra
         ax.plot([0, x_points[i]], [0, y_points[num_lines - 1 - i]], color=color, linewidth=1.5, alpha=0.8)
 
         # Angolo in basso a destra
         ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color, linewidth=1.5, alpha=0.8)
-    
+
     return fig_to_array(fig)
 
 def draw_radial_refraction_frame(width, height, params, color_palette):
@@ -210,24 +210,24 @@ def draw_radial_refraction_frame(width, height, params, color_palette):
     ax.axis('off')
     ax.set_facecolor('black')
     fig.tight_layout(pad=0)
-    
+
     center_x, center_y = width / 2, height / 2
-    
+
     # Ridotto il moltiplicatore per un rendering più leggero
     num_lines = int(20 + params['rms'] * 80)
-    
+
     line_length = 50 + params['centroid'] * 100
-    
+
     colors = create_color_palette(color_palette, num_lines)
-    
+
     for i in range(num_lines):
         angle = (i / num_lines) * 2 * np.pi
-        
+
         end_x = center_x + line_length * np.cos(angle)
         end_y = center_y + line_length * np.sin(angle)
-        
+
         ax.plot([center_x, end_x], [center_y, end_y], color=colors[i], linewidth=2, alpha=0.7)
-        
+
     return fig_to_array(fig)
 
 def draw_organic_frame(width, height, params, color_palette):
@@ -304,16 +304,16 @@ def draw_parabola_frame(width, height, params, color_palette):
     fig.tight_layout(pad=0)
 
     num_lines = int(50 + params['rms'] * 150)
-    
+
     colors = create_color_palette(color_palette, num_lines)
 
     # Crea due "curve" dinamiche invece di due rette fisse
     t = np.linspace(0, 1, num_lines)
-    
+
     # La prima curva si basa sulla distorsione della larghezza
     x_curve1 = t * width
     y_curve1 = params['rms'] * height * np.sin(t * np.pi * 2 + params['centroid'] * 5)
-    
+
     # La seconda curva si basa sulla distorsione dell'altezza
     x_curve2 = width * (1 - t)
     y_curve2 = height + params['bandwidth'] * height * np.cos(t * np.pi * 2 + params['zcr'] * 5)
@@ -321,12 +321,12 @@ def draw_parabola_frame(width, height, params, color_palette):
     for i in range(num_lines):
         x1 = x_curve1[i]
         y1 = y_curve1[i]
-        
+
         x2 = x_curve2[num_lines - 1 - i]
         y2 = y_curve2[num_lines - 1 - i]
-        
+
         ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
-    
+
     return fig_to_array(fig)
 
 def draw_ellipse_frame(width, height, params, color_palette):
@@ -336,14 +336,14 @@ def draw_ellipse_frame(width, height, params, color_palette):
     ax.axis('off')
     ax.set_facecolor('black')
     fig.tight_layout(pad=0)
-    
+
     num_lines = int(50 + params['rms'] * 150)
     radius = 200 + params['centroid'] * 150
-    
+
     center_x, center_y = width / 2, height / 2
-    
+
     colors = create_color_palette(color_palette, num_lines)
-    
+
     theta = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
     x_circle = radius * np.cos(theta) + center_x
     y_circle = radius * np.sin(theta) + center_y
@@ -352,9 +352,9 @@ def draw_ellipse_frame(width, height, params, color_palette):
         x_values = [x_circle[i], x_circle[i + num_lines//2]]
         y_values = [y_circle[i], y_circle[i + num_lines//2]]
         ax.plot(x_values, y_values, color=colors[i], linewidth=1.5, alpha=0.8)
-        
+
     return fig_to_array(fig)
-    
+
 def draw_cardioide_frame(width, height, params, color_palette):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
@@ -362,88 +362,87 @@ def draw_cardioide_frame(width, height, params, color_palette):
     ax.axis('off')
     ax.set_facecolor('black')
     fig.tight_layout(pad=0)
-    
+
     num_points = int(50 + params['rms'] * 150)
     multiplier = 2 + params['centroid'] * 5
     scale = 200 + params['bandwidth'] * 100
-    
+
     center_x, center_y = width / 2, height / 2
 
     t = np.linspace(0, 2 * np.pi, num_points)
     x = scale * np.cos(t) + center_x
     y = scale * np.sin(t) + center_y
-    
+
     colors = create_color_palette(color_palette, num_points)
 
     for i in range(num_points):
         source_index = i
         target_index = int((multiplier * i) % num_points)
-        
-        ax.plot([x[source_index], x[target_index]], 
-                [y[source_index], y[target_index]], 
+
+        ax.plot([x[source_index], x[target_index]],
+                [y[source_index], y[target_index]],
                 color=colors[i], linewidth=1, alpha=0.7)
 
     return fig_to_array(fig)
 
-
 def add_text_to_frame(frame, text, pos, size, color):
     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
-    
+
     img_pil = Image.fromarray(frame)
     draw = ImageDraw.Draw(img_pil)
-    
+
     try:
         font = ImageFont.truetype("arial.ttf", size)
     except IOError:
         font = ImageFont.load_default()
-    
+
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
-    
+
     frame_width, frame_height = img_pil.size
-    
+
     if pos['h'] == "Sinistra":
         x = 20
     elif pos['h'] == "Destra":
         x = frame_width - text_width - 20
     else:
         x = (frame_width - text_width) / 2
-    
+
     if pos['v'] == "Sopra":
         y = 20
     elif pos['v'] == "Sotto":
         y = frame_height - text_height - 20
     else:
         y = (frame_height - text_height) / 2
-        
+
     draw.text((x, y), text, font=font, fill=rgb_color)
-    
+
     return np.array(img_pil)
 
 def generate_video_frames(audio_path, width, height, fps, style, color_palette, title_params=None):
     try:
         y, sr = librosa.load(audio_path)
         video_duration = len(y) / sr
-        
+
         total_frames = int(video_duration * fps)
         hop_length = max(1, len(y) // total_frames)
         frame_size = 2048
-        
+
         features = extract_audio_features(y, sr, frame_size, hop_length)
-        
+
         temp_video = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         temp_video_path = temp_video.name
         temp_video.close()
-        
+
         writer = imageio.get_writer(temp_video_path, fps=fps, macro_block_size=1)
-        
+
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         for i in range(total_frames):
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
-            
+
             if style == "Geometrico":
                 frame = draw_geometric_frame(width, height, frame_features, color_palette)
             elif style == "Organico":
@@ -473,17 +472,17 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
                     title_params['size'],
                     title_params['color']
                 )
-            
+
             writer.append_data(frame)
             progress = (i + 1) / total_frames
             progress_bar.progress(progress)
             status_text.text(f"Generazione frame {i+1}/{total_frames} - Durata: {video_duration:.1f}s")
-        
+
         writer.close()
         progress_bar.empty()
         status_text.empty()
         return temp_video_path
-        
+
     except Exception as e:
         st.error(f"Errore durante la generazione dei frame: {str(e)}")
         return None
@@ -492,9 +491,9 @@ def merge_audio_video(video_path, audio_path, output_path):
     try:
         input_video = ffmpeg.input(video_path)
         input_audio = ffmpeg.input(audio_path)
-        
+
         ffmpeg.output(input_video, input_audio, output_path, vcodec='copy', acodec='aac').run(overwrite_output=True)
-        
+
         return True
     except ffmpeg.Error as e:
         st.error(f"Errore durante l'unione di video e audio: {e.stderr.decode('utf8')}")
@@ -510,7 +509,7 @@ if audio_file and generate_button:
         with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{audio_file.type.split("/")[-1]}') as tmp_audio:
             tmp_audio.write(audio_file.read())
             audio_path = tmp_audio.name
-            
+
         title_params = None
         if enable_title:
             if title_text:
@@ -521,10 +520,10 @@ if audio_file and generate_button:
                     'size': title_size,
                     'color': title_color
                 }
-        
+
         with st.spinner("Generazione dei frame video in corso..."):
             video_path_no_audio = generate_video_frames(audio_path, width, height, fps, style, color_palette, title_params)
-        
+
         if video_path_no_audio and os.path.exists(video_path_no_audio):
             st.info("Unione di video e audio in corso...")
             temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
@@ -534,7 +533,7 @@ if audio_file and generate_button:
             if merge_audio_video(video_path_no_audio, audio_path, final_video_path):
                 st.success("Video generato con successo!")
                 st.video(final_video_path)
-                
+
                 try:
                     with open(final_video_path, "rb") as f:
                         video_data = f.read()
@@ -547,10 +546,10 @@ if audio_file and generate_button:
                 st.error("Si è verificato un errore durante l'unione di video e audio.")
         else:
             st.error("Impossibile generare il video. Riprova con un file audio diverso.")
-    
+
     except Exception as e:
         st.error(f"Si è verificato un errore durante la generazione: {str(e)}")
-    
+
     finally:
         for p in [audio_path, video_path_no_audio, final_video_path]:
             if p and os.path.exists(p):
@@ -565,7 +564,7 @@ else:
     4. **Opzionale:** Abilita e personalizza il titolo
     5. Clicca 'Genera Video' per creare la tua opera d'arte algoritmica
     """)
-    
+
     st.subheader("Formati di esportazione disponibili")
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -577,4 +576,17 @@ else:
         st.write("Ideale per TikTok e Instagram Stories")
         st.write("Dimensioni: 540x960 px")
     with col3:
-        st.write("...
+        st.write("**Formato 16:9 (Orizzontale)**")
+        st.write("Perfetto per YouTube e presentazioni")
+        st.write("Dimensioni: 1280x720 px")
+
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center'>
+        <p>AudioLineThree by Loop507 - Realizzato con Python e Streamlit</p>
+        <p>Converte file audio in visualizzazioni artistiche algoritmiche</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
