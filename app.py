@@ -52,7 +52,7 @@ with st.sidebar:
     st.subheader("Stile Artistico")
     style = st.selectbox(
         "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli"]
+        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale"]
     )
     
     color_palette = st.selectbox(
@@ -148,39 +148,23 @@ def draw_curve_stitching_frame(width, height, params, color_palette):
     ax.set_facecolor('black')
     fig.tight_layout(pad=0)
 
-    num_segments_base = 50
-    num_segments_dynamic = int(params['rms'] * 150)
-    num_segments = num_segments_base + num_segments_dynamic
+    num_segments = int(50 + params['rms'] * 150)
     
-    top_points = np.linspace(0, width, num_segments)
-    bottom_points = np.linspace(width, 0, num_segments)
     left_points = np.linspace(0, height, num_segments)
-    right_points = np.linspace(height, 0, num_segments)
+    bottom_points = np.linspace(0, width, num_segments)
     
     distortion_factor = params['centroid'] * 0.5 + params['bandwidth'] * 0.5
     
     colors = create_color_palette(color_palette, num_segments)
     
     for i in range(num_segments):
-        start_x_top_left = top_points[i]
-        start_y_top_left = height
+        start_x = 0
+        start_y = left_points[i]
         
-        start_x_left_bottom = 0
-        start_y_left_bottom = left_points[i]
+        end_x = bottom_points[num_segments - 1 - i]
+        end_y = 0
         
-        start_x_bottom_right = bottom_points[i]
-        start_y_bottom_right = 0
-        
-        start_x_right_top = width
-        start_y_right_top = right_points[i]
-
-        end_index = int((num_segments - 1 - i) * (1 - distortion_factor))
-        end_index = max(0, min(end_index, num_segments - 1))
-        
-        ax.plot([start_x_top_left, 0], [start_y_top_left, left_points[end_index]], color=colors[i], linewidth=1.5, alpha=0.8)
-        ax.plot([start_x_left_bottom, bottom_points[end_index]], [start_y_left_bottom, 0], color=colors[i], linewidth=1.5, alpha=0.8)
-        ax.plot([start_x_bottom_right, width], [start_y_bottom_right, right_points[end_index]], color=colors[i], linewidth=1.5, alpha=0.8)
-        ax.plot([start_x_right_top, top_points[end_index]], [start_y_right_top, height], color=colors[i], linewidth=1.5, alpha=0.8)
+        ax.plot([start_x, end_x], [start_y, end_y], color=colors[i], linewidth=1.5, alpha=0.8)
     
     return fig_to_array(fig)
 
@@ -214,6 +198,33 @@ def draw_corner_frame(width, height, params, color_palette):
         # Angolo in basso a destra
         ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color, linewidth=1.5, alpha=0.8)
     
+    return fig_to_array(fig)
+
+def draw_radial_refraction_frame(width, height, params, color_palette):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor('black')
+    fig.tight_layout(pad=0)
+    
+    center_x, center_y = width / 2, height / 2
+    
+    # Ridotto il moltiplicatore per un rendering più leggero
+    num_lines = int(20 + params['rms'] * 80)
+    
+    line_length = 50 + params['centroid'] * 100
+    
+    colors = create_color_palette(color_palette, num_lines)
+    
+    for i in range(num_lines):
+        angle = (i / num_lines) * 2 * np.pi
+        
+        end_x = center_x + line_length * np.cos(angle)
+        end_y = center_y + line_length * np.sin(angle)
+        
+        ax.plot([center_x, end_x], [center_y, end_y], color=colors[i], linewidth=2, alpha=0.7)
+        
     return fig_to_array(fig)
 
 def draw_organic_frame(width, height, params, color_palette):
@@ -351,6 +362,8 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
                 frame = draw_curve_stitching_frame(width, height, frame_features, color_palette)
             elif style == "Partenza dagli Angoli":
                 frame = draw_corner_frame(width, height, frame_features, color_palette)
+            elif style == "Rifrazione Radiale":
+                frame = draw_radial_refraction_frame(width, height, frame_features, color_palette)
 
             if title_params and title_params.get('text'):
                 frame = add_text_to_frame(
@@ -477,5 +490,4 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
-)   
-  
+)
