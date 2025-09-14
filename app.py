@@ -50,10 +50,9 @@ with st.sidebar:
     fps = st.slider("FPS", 10, 60, 24)
     
     st.subheader("Stile Artistico")
-    # MODIFICA: Aggiunto "Cucitura di Curve" nel menu a tendina
     style = st.selectbox(
         "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve"]
+        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli"]
     )
     
     color_palette = st.selectbox(
@@ -61,13 +60,11 @@ with st.sidebar:
         ["Arcobaleno", "Pastello", "Monocromatico", "Neon"]
     )
     
-    # Nuova sezione per il titolo
+    # Sezione per il titolo
     st.subheader("Titolo Video")
     
-    # Checkbox per abilitare il titolo
     enable_title = st.checkbox("Abilita Titolo")
     
-    # Mostra le opzioni solo se la checkbox è spuntata
     if enable_title:
         title_text = st.text_input("Testo del Titolo", value="Il Mio Titolo")
         
@@ -125,7 +122,6 @@ def fig_to_array(fig):
     plt.close(fig)
     return img
 
-# Funzione originale per l'effetto geometrico (lasciata invariata)
 def draw_geometric_frame(width, height, params, color_palette):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
@@ -144,7 +140,6 @@ def draw_geometric_frame(width, height, params, color_palette):
         ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
 
-# NUOVA FUNZIONE per l'effetto "Cucitura di Curve"
 def draw_curve_stitching_frame(width, height, params, color_palette):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
@@ -153,28 +148,76 @@ def draw_curve_stitching_frame(width, height, params, color_palette):
     ax.set_facecolor('black')
     fig.tight_layout(pad=0)
 
-    # Parametri dinamici basati sull'audio
     num_segments = int(50 + params['rms'] * 150)
     
-    # Crea i due assi per la "cucitura"
-    x1_points = np.linspace(0, width, num_segments)
-    y1_points = np.zeros(num_segments)
-
-    y2_points = np.linspace(0, height, num_segments)
-    x2_points = np.zeros(num_segments)
-
-    # Scambia i punti per creare l'effetto di curva, variando con l'audio
+    top_points = np.linspace(0, width, num_segments)
+    bottom_points = np.linspace(width, 0, num_segments)
+    left_points = np.linspace(0, height, num_segments)
+    right_points = np.linspace(height, 0, num_segments)
+    
     distortion_factor = params['centroid'] * 0.5 + params['bandwidth'] * 0.5
+    
+    colors = create_color_palette(color_palette, num_segments)
+    
     for i in range(num_segments):
-        start_x = x1_points[i]
-        start_y = y1_points[i]
+        start_x_top_left = top_points[i]
+        start_y_top_left = height
+        end_x_top_left = 0
+        end_y_top_left = left_points[i]
         
+        start_x_left_bottom = 0
+        start_y_left_bottom = left_points[i]
+        end_x_left_bottom = bottom_points[i]
+        end_y_left_bottom = 0
+        
+        start_x_bottom_right = bottom_points[i]
+        start_y_bottom_right = 0
+        end_x_bottom_right = width
+        end_y_bottom_right = right_points[i]
+        
+        start_x_right_top = width
+        start_y_right_top = right_points[i]
+        end_x_right_top = top_points[i]
+        end_y_right_top = height
+
         end_index = int((num_segments - 1 - i) * (1 - distortion_factor))
-        end_x = x2_points[end_index]
-        end_y = y2_points[end_index]
         
-        colors = create_color_palette(color_palette, num_segments)
-        ax.plot([start_x, end_x], [start_y, end_y], color=colors[i], linewidth=1, alpha=0.8)
+        ax.plot([start_x_top_left, 0], [start_y_top_left, left_points[end_index]], color=colors[i], linewidth=1.5, alpha=0.8)
+        ax.plot([start_x_left_bottom, bottom_points[end_index]], [start_y_left_bottom, 0], color=colors[i], linewidth=1.5, alpha=0.8)
+        ax.plot([start_x_bottom_right, width], [start_y_bottom_right, right_points[end_index]], color=colors[i], linewidth=1.5, alpha=0.8)
+        ax.plot([start_x_right_top, top_points[end_index]], [start_y_right_top, height], color=colors[i], linewidth=1.5, alpha=0.8)
+    
+    return fig_to_array(fig)
+
+def draw_corner_frame(width, height, params, color_palette):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor('black')
+    fig.tight_layout(pad=0)
+
+    num_lines = int(20 + params['rms'] * 80)
+    
+    x_points = np.linspace(0, width, num_lines)
+    y_points = np.linspace(0, height, num_lines)
+    
+    colors = create_color_palette(color_palette, num_lines)
+    
+    for i in range(num_lines):
+        color = colors[i % len(colors)]
+        
+        # Angolo in alto a sinistra
+        ax.plot([0, x_points[i]], [height, y_points[i]], color=color, linewidth=1.5, alpha=0.8)
+        
+        # Angolo in alto a destra
+        ax.plot([width, x_points[num_lines - 1 - i]], [height, y_points[i]], color=color, linewidth=1.5, alpha=0.8)
+        
+        # Angolo in basso a sinistra
+        ax.plot([0, x_points[i]], [0, y_points[num_lines - 1 - i]], color=color, linewidth=1.5, alpha=0.8)
+
+        # Angolo in basso a destra
+        ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color, linewidth=1.5, alpha=0.8)
     
     return fig_to_array(fig)
 
@@ -243,52 +286,42 @@ def draw_chaotic_frame(width, height, params, color_palette):
             ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
-# Funzione per aggiungere il testo su un frame
 def add_text_to_frame(frame, text, pos, size, color):
-    # Converti il colore esadecimale in RGB
     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
     
-    # Crea un'immagine PIL dal frame di numpy
     img_pil = Image.fromarray(frame)
     draw = ImageDraw.Draw(img_pil)
     
-    # Posizione del font per l'uso con PIL
     try:
         font = ImageFont.truetype("arial.ttf", size)
     except IOError:
         font = ImageFont.load_default()
     
-    # Calcola le dimensioni del testo
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
     
-    # Calcola la posizione
     frame_width, frame_height = img_pil.size
     
-    # Posizione orizzontale
     if pos['h'] == "Sinistra":
         x = 20
     elif pos['h'] == "Destra":
         x = frame_width - text_width - 20
-    else: # Centrata
+    else:
         x = (frame_width - text_width) / 2
     
-    # Posizione verticale
     if pos['v'] == "Sopra":
         y = 20
     elif pos['v'] == "Sotto":
         y = frame_height - text_height - 20
-    else: # Centrata
+    else:
         y = (frame_height - text_height) / 2
         
     draw.text((x, y), text, font=font, fill=rgb_color)
     
     return np.array(img_pil)
 
-# Funzione per generare il video senza audio
 def generate_video_frames(audio_path, width, height, fps, style, color_palette, title_params=None):
-    """Genera un video senza audio dai frame e restituisce il percorso del file."""
     try:
         y, sr = librosa.load(audio_path)
         video_duration = len(y) / sr
@@ -311,7 +344,6 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
         for i in range(total_frames):
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             
-            # MODIFICA: Aggiunto il nuovo elif per il nuovo stile
             if style == "Geometrico":
                 frame = draw_geometric_frame(width, height, frame_features, color_palette)
             elif style == "Organico":
@@ -322,8 +354,9 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
                 frame = draw_chaotic_frame(width, height, frame_features, color_palette)
             elif style == "Cucitura di Curve":
                 frame = draw_curve_stitching_frame(width, height, frame_features, color_palette)
+            elif style == "Partenza dagli Angoli":
+                frame = draw_corner_frame(width, height, frame_features, color_palette)
 
-            # Aggiunge il titolo se i parametri sono stati forniti
             if title_params and title_params.get('text'):
                 frame = add_text_to_frame(
                     frame,
@@ -347,9 +380,7 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
         st.error(f"Errore durante la generazione dei frame: {str(e)}")
         return None
 
-# Funzione per unire video e audio
 def merge_audio_video(video_path, audio_path, output_path):
-    """Unisce un file video con un file audio usando ffmpeg-python."""
     try:
         input_video = ffmpeg.input(video_path)
         input_audio = ffmpeg.input(audio_path)
@@ -372,7 +403,6 @@ if audio_file and generate_button:
             tmp_audio.write(audio_file.read())
             audio_path = tmp_audio.name
             
-        # Recupera i parametri del titolo se la checkbox è spuntata
         title_params = None
         if enable_title:
             if title_text:
