@@ -148,7 +148,9 @@ def draw_curve_stitching_frame(width, height, params, color_palette):
     ax.set_facecolor('black')
     fig.tight_layout(pad=0)
 
-    num_segments = int(50 + params['rms'] * 150)
+    num_segments_base = 50
+    num_segments_dynamic = int(params['rms'] * 150)
+    num_segments = num_segments_base + num_segments_dynamic
     
     top_points = np.linspace(0, width, num_segments)
     bottom_points = np.linspace(width, 0, num_segments)
@@ -162,25 +164,18 @@ def draw_curve_stitching_frame(width, height, params, color_palette):
     for i in range(num_segments):
         start_x_top_left = top_points[i]
         start_y_top_left = height
-        end_x_top_left = 0
-        end_y_top_left = left_points[i]
         
         start_x_left_bottom = 0
         start_y_left_bottom = left_points[i]
-        end_x_left_bottom = bottom_points[i]
-        end_y_left_bottom = 0
         
         start_x_bottom_right = bottom_points[i]
         start_y_bottom_right = 0
-        end_x_bottom_right = width
-        end_y_bottom_right = right_points[i]
         
         start_x_right_top = width
         start_y_right_top = right_points[i]
-        end_x_right_top = top_points[i]
-        end_y_right_top = height
 
         end_index = int((num_segments - 1 - i) * (1 - distortion_factor))
+        end_index = max(0, min(end_index, num_segments - 1))
         
         ax.plot([start_x_top_left, 0], [start_y_top_left, left_points[end_index]], color=colors[i], linewidth=1.5, alpha=0.8)
         ax.plot([start_x_left_bottom, bottom_points[end_index]], [start_y_left_bottom, 0], color=colors[i], linewidth=1.5, alpha=0.8)
@@ -482,4 +477,5 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
-)
+)   
+  
