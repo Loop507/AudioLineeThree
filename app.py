@@ -303,27 +303,27 @@ def draw_parabola_frame(width, height, params, color_palette):
     ax.set_facecolor('black')
     fig.tight_layout(pad=0)
 
-    num_lines = int(50 + params['rms'] * 100)
-    distortion = 1.0 + params['centroid'] * 2.0
+    num_lines = int(50 + params['rms'] * 150)
     
     colors = create_color_palette(color_palette, num_lines)
+
+    # Crea due "curve" dinamiche invece di due rette fisse
+    t = np.linspace(0, 1, num_lines)
     
-    t = np.linspace(0, width, num_lines)
+    # La prima curva si basa sulla distorsione della larghezza
+    x_curve1 = t * width
+    y_curve1 = params['rms'] * height * np.sin(t * np.pi * 2 + params['centroid'] * 5)
     
-    # Punti sulla prima retta (asse x distorto)
-    points_line1_x = t
-    points_line1_y = np.zeros(num_lines) + params['bandwidth'] * height * 0.1
-    
-    # Punti sulla seconda retta (asse y distorto)
-    points_line2_x = np.zeros(num_lines) + params['rms'] * width * 0.1
-    points_line2_y = np.linspace(0, height, num_lines)
+    # La seconda curva si basa sulla distorsione dell'altezza
+    x_curve2 = width * (1 - t)
+    y_curve2 = height + params['bandwidth'] * height * np.cos(t * np.pi * 2 + params['zcr'] * 5)
 
     for i in range(num_lines):
-        x1 = points_line1_x[i]
-        y1 = points_line1_y[i]
+        x1 = x_curve1[i]
+        y1 = y_curve1[i]
         
-        x2 = points_line2_x[num_lines - 1 - i]
-        y2 = points_line2_y[num_lines - 1 - i]
+        x2 = x_curve2[num_lines - 1 - i]
+        y2 = y_curve2[num_lines - 1 - i]
         
         ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
     
@@ -577,17 +577,4 @@ else:
         st.write("Ideale per TikTok e Instagram Stories")
         st.write("Dimensioni: 540x960 px")
     with col3:
-        st.write("**Formato 16:9 (Orizzontale)**")
-        st.write("Perfetto per YouTube e presentazioni")
-        st.write("Dimensioni: 1280x720 px")
-
-st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center'>
-        <p>AudioLineThree by Loop507 - Realizzato con Python e Streamlit</p>
-        <p>Converte file audio in visualizzazioni artistiche algoritmiche</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        st.write("...
