@@ -50,9 +50,10 @@ with st.sidebar:
     fps = st.slider("FPS", 10, 60, 24)
     
     st.subheader("Stile Artistico")
+    # MODIFICA: Aggiunto "Cucitura di Curve" nel menu a tendina
     style = st.selectbox(
         "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico"]
+        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve"]
     )
     
     color_palette = st.selectbox(
@@ -124,6 +125,7 @@ def fig_to_array(fig):
     plt.close(fig)
     return img
 
+# Funzione originale per l'effetto geometrico (lasciata invariata)
 def draw_geometric_frame(width, height, params, color_palette):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     ax.set_xlim(0, width)
@@ -140,6 +142,40 @@ def draw_geometric_frame(width, height, params, color_palette):
         x2 = width - (i * (width / num_lines))
         y2 = height + np.sin(i * 0.2) * distortion * 50
         ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
+    return fig_to_array(fig)
+
+# NUOVA FUNZIONE per l'effetto "Cucitura di Curve"
+def draw_curve_stitching_frame(width, height, params, color_palette):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor('black')
+    fig.tight_layout(pad=0)
+
+    # Parametri dinamici basati sull'audio
+    num_segments = int(50 + params['rms'] * 150)
+    
+    # Crea i due assi per la "cucitura"
+    x1_points = np.linspace(0, width, num_segments)
+    y1_points = np.zeros(num_segments)
+
+    y2_points = np.linspace(0, height, num_segments)
+    x2_points = np.zeros(num_segments)
+
+    # Scambia i punti per creare l'effetto di curva, variando con l'audio
+    distortion_factor = params['centroid'] * 0.5 + params['bandwidth'] * 0.5
+    for i in range(num_segments):
+        start_x = x1_points[i]
+        start_y = y1_points[i]
+        
+        end_index = int((num_segments - 1 - i) * (1 - distortion_factor))
+        end_x = x2_points[end_index]
+        end_y = y2_points[end_index]
+        
+        colors = create_color_palette(color_palette, num_segments)
+        ax.plot([start_x, end_x], [start_y, end_y], color=colors[i], linewidth=1, alpha=0.8)
+    
     return fig_to_array(fig)
 
 def draw_organic_frame(width, height, params, color_palette):
@@ -275,6 +311,7 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
         for i in range(total_frames):
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             
+            # MODIFICA: Aggiunto il nuovo elif per il nuovo stile
             if style == "Geometrico":
                 frame = draw_geometric_frame(width, height, frame_features, color_palette)
             elif style == "Organico":
@@ -283,6 +320,8 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette, 
                 frame = draw_hybrid_frame(width, height, frame_features, color_palette)
             elif style == "Caotico":
                 frame = draw_chaotic_frame(width, height, frame_features, color_palette)
+            elif style == "Cucitura di Curve":
+                frame = draw_curve_stitching_frame(width, height, frame_features, color_palette)
 
             # Aggiunge il titolo se i parametri sono stati forniti
             if title_params and title_params.get('text'):
