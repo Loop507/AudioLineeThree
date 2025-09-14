@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 import cv2
 import imageio
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import tempfile
 import os
 from scipy.interpolate import CubicSpline
@@ -34,7 +34,6 @@ with st.sidebar:
     audio_file = st.file_uploader("Carica un file audio", type=['wav', 'mp3', 'ogg', 'flac'])
     
     st.subheader("Parametri Video")
-    st.info("💡 Il video avrà automaticamente la stessa durata del file audio caricato")
     
     aspect_ratio = st.selectbox(
         "Formato di esportazione",
@@ -61,6 +60,28 @@ with st.sidebar:
         ["Arcobaleno", "Pastello", "Monocromatico", "Neon"]
     )
     
+    # Nuova sezione per il titolo
+    st.subheader("Titolo Video")
+    
+    # Checkbox per abilitare il titolo
+    enable_title = st.checkbox("Abilita Titolo")
+    
+    # Mostra le opzioni solo se la checkbox è spuntata
+    if enable_title:
+        title_text = st.text_input("Testo del Titolo", value="Il Mio Titolo")
+        
+        col_pos1, col_pos2 = st.columns(2)
+        with col_pos1:
+            title_v_pos = st.selectbox("Posizione Verticale", ["Sopra", "Sotto"])
+        with col_pos2:
+            title_h_pos = st.selectbox("Posizione Orizzontale", ["Sinistra", "Destra"])
+            
+        col_style1, col_style2 = st.columns(2)
+        with col_style1:
+            title_size = st.slider("Dimensione Testo", 20, 100, 40)
+        with col_style2:
+            title_color = st.color_picker("Colore Testo", "#FFFFFF")
+
     generate_button = st.button("Genera Video", type="primary")
 
 # Funzioni per l'elaborazione audio
@@ -186,8 +207,51 @@ def draw_chaotic_frame(width, height, params, color_palette):
             ax.plot([x, x+dx], [y, y+dy], color=colors[i % len(colors)], linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
+# Funzione per aggiungere il testo su un frame
+def add_text_to_frame(frame, text, pos, size, color):
+    # Converti il colore esadecimale in RGB
+    rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
+    
+    # Crea un'immagine PIL dal frame di numpy
+    img_pil = Image.fromarray(frame)
+    draw = ImageDraw.Draw(img_pil)
+    
+    # Posizione del font per l'uso con PIL
+    try:
+        font = ImageFont.truetype("arial.ttf", size)
+    except IOError:
+        font = ImageFont.load_default()
+    
+    # Calcola le dimensioni del testo
+    text_bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    
+    # Calcola la posizione
+    frame_width, frame_height = img_pil.size
+    
+    # Posizione orizzontale
+    if pos['h'] == "Sinistra":
+        x = 20
+    elif pos['h'] == "Destra":
+        x = frame_width - text_width - 20
+    else: # Centrata
+        x = (frame_width - text_width) / 2
+    
+    # Posizione verticale
+    if pos['v'] == "Sopra":
+        y = 20
+    elif pos['v'] == "Sotto":
+        y = frame_height - text_height - 20
+    else: # Centrata
+        y = (frame_height - text_height) / 2
+        
+    draw.text((x, y), text, font=font, fill=rgb_color)
+    
+    return np.array(img_pil)
+
 # Funzione per generare il video senza audio
-def generate_video_frames(audio_path, width, height, fps, style, color_palette):
+def generate_video_frames(audio_path, width, height, fps, style, color_palette, title_params=None):
     """Genera un video senza audio dai frame e restituisce il percorso del file."""
     try:
         y, sr = librosa.load(audio_path)
@@ -219,6 +283,16 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette):
                 frame = draw_hybrid_frame(width, height, frame_features, color_palette)
             elif style == "Caotico":
                 frame = draw_chaotic_frame(width, height, frame_features, color_palette)
+
+            # Aggiunge il titolo se i parametri sono stati forniti
+            if title_params and title_params.get('text'):
+                frame = add_text_to_frame(
+                    frame,
+                    title_params['text'],
+                    {'v': title_params['v_pos'], 'h': title_params['h_pos']},
+                    title_params['size'],
+                    title_params['color']
+                )
             
             writer.append_data(frame)
             progress = (i + 1) / total_frames
@@ -241,7 +315,6 @@ def merge_audio_video(video_path, audio_path, output_path):
         input_video = ffmpeg.input(video_path)
         input_audio = ffmpeg.input(audio_path)
         
-        # Unisce i due flussi (video e audio) ricodificando l'audio in AAC
         ffmpeg.output(input_video, input_audio, output_path, vcodec='copy', acodec='aac').run(overwrite_output=True)
         
         return True
@@ -260,8 +333,20 @@ if audio_file and generate_button:
             tmp_audio.write(audio_file.read())
             audio_path = tmp_audio.name
             
+        # Recupera i parametri del titolo se la checkbox è spuntata
+        title_params = None
+        if enable_title:
+            if title_text:
+                title_params = {
+                    'text': title_text,
+                    'v_pos': title_v_pos,
+                    'h_pos': title_h_pos,
+                    'size': title_size,
+                    'color': title_color
+                }
+        
         with st.spinner("Generazione dei frame video in corso..."):
-            video_path_no_audio = generate_video_frames(audio_path, width, height, fps, style, color_palette)
+            video_path_no_audio = generate_video_frames(audio_path, width, height, fps, style, color_palette, title_params)
         
         if video_path_no_audio and os.path.exists(video_path_no_audio):
             st.info("Unione di video e audio in corso...")
@@ -277,7 +362,7 @@ if audio_file and generate_button:
                     with open(final_video_path, "rb") as f:
                         video_data = f.read()
                     ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
-                    file_name = f"AudioLinee2_{ratio_name}.mp4"
+                    file_name = f"AudioLinee_{ratio_name}.mp4"
                     st.download_button(label="Scarica Video", data=video_data, file_name=file_name, mime="video/mp4")
                 except Exception as e:
                     st.error(f"Errore durante la preparazione del download: {str(e)}")
@@ -300,9 +385,8 @@ else:
     1. Carica un file audio usando il pannello a sinistra
     2. Regola i parametri del video (formato, FPS)
     3. Scegli lo stile artistico e la palette di colori
-    4. Clicca 'Genera Video' per creare la tua opera d'arte algoritmica
-    
-    ⚠️ **Nota**: Il video avrà automaticamente la stessa durata del file audio caricato.
+    4. **Opzionale:** Abilita e personalizza il titolo
+    5. Clicca 'Genera Video' per creare la tua opera d'arte algoritmica
     """)
     
     st.subheader("Formati di esportazione disponibili")
