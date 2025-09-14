@@ -137,6 +137,24 @@ def create_color_palette(palette_name, n_colors, custom_colors=None):
             b = np.sin(0.3 * i + 4) * 0.5 + 0.5
             colors.append([r, g, b, 1.0])
         return np.array(colors)
+    elif palette_name == "Personalizza" and custom_colors and len(custom_colors) == 3:
+        r1, g1, b1 = hex_to_rgb_norm(custom_colors[0])
+        r2, g2, b2 = hex_to_rgb_norm(custom_colors[1])
+        r3, g3, b3 = hex_to_rgb_norm(custom_colors[2])
+        
+        colors = []
+        for i in range(n_colors):
+            t = i / (n_colors - 1)
+            if t < 0.5:
+                r_new = r1 + (r2 - r1) * t * 2
+                g_new = g1 + (g2 - g1) * t * 2
+                b_new = b1 + (b2 - b1) * t * 2
+            else:
+                r_new = r2 + (r3 - r2) * (t - 0.5) * 2
+                g_new = g2 + (g3 - g2) * (t - 0.5) * 2
+                b_new = b2 + (b3 - b2) * (t - 0.5) * 2
+            colors.append([r_new, g_new, b_new, 1.0])
+        return np.array(colors)
     else:
         return plt.cm.viridis(np.linspace(0, 1, n_colors))
 
@@ -147,24 +165,9 @@ def fig_to_array(fig):
     plt.close(fig)
     return img
 
-def get_blended_color(params, colors):
-    if not isinstance(colors, list) or len(colors) < 3:
-        return hex_to_rgb_norm('#FFFFFF')
-    
-    low_color_rgb = hex_to_rgb_norm(colors[0])
-    mid_color_rgb = hex_to_rgb_norm(colors[1])
-    high_color_rgb = hex_to_rgb_norm(colors[2])
-
-    rms_weight = params['rms']
-    centroid_weight = params['centroid']
-    
-    base_blended = np.array(low_color_rgb) * (1 - rms_weight) + np.array(mid_color_rgb) * rms_weight
-    final_color = base_blended * (1 - centroid_weight) + np.array(high_color_rgb) * centroid_weight
-    
-    return tuple(final_color)
-
 def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -174,22 +177,19 @@ def draw_geometric_frame(width, height, params, color_palette_option, bg_color, 
     num_lines = int(20 + params['rms'] * 100)
     distortion = params['centroid'] * 2
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-        ax.plot([0, width], [0, height], color=color_to_use, linewidth=1.5, alpha=0.8)
-        ax.plot([width, 0], [0, height], color=color_to_use, linewidth=1.5, alpha=0.8)
-    else:
-        colors = create_color_palette(color_palette_option, num_lines)
-        for i in range(num_lines):
-            x1 = i * (width / num_lines)
-            y1 = 0
-            x2 = width - (i * (width / num_lines))
-            y2 = height + np.sin(i * 0.2) * distortion * 50
-            ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
+    colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
+
+    for i in range(num_lines):
+        x1 = i * (width / num_lines)
+        y1 = 0
+        x2 = width - (i * (width / num_lines))
+        y2 = height + np.sin(i * 0.2) * distortion * 50
+        ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
 
 def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -198,10 +198,7 @@ def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_c
 
     num_segments = int(50 + params['rms'] * 150)
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-    else:
-        colors = create_color_palette(color_palette_option, num_segments)
+    colors = create_color_palette(color_palette_option, num_segments, custom_colors=line_colors)
     
     for i in range(num_segments):
         start_x, start_y = 0, np.linspace(0, height, num_segments)[i]
@@ -214,16 +211,14 @@ def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_c
         
         path = Path(verts, codes)
         
-        if color_palette_option == "Personalizza":
-            patch = PathPatch(path, facecolor='none', lw=2, edgecolor=color_to_use, alpha=0.8)
-        else:
-            patch = PathPatch(path, facecolor='none', lw=2, edgecolor=colors[i], alpha=0.8)
+        patch = PathPatch(path, facecolor='none', lw=2, edgecolor=colors[i], alpha=0.8)
         ax.add_patch(patch)
     
     return fig_to_array(fig)
 
 def draw_corner_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -232,16 +227,10 @@ def draw_corner_frame(width, height, params, color_palette_option, bg_color, lin
 
     num_lines = int(20 + params['rms'] * 80)
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-    else:
-        colors = create_color_palette(color_palette_option, num_lines)
+    colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
     for i in range(num_lines):
-        if color_palette_option == "Personalizza":
-            color_to_apply = color_to_use
-        else:
-            color_to_apply = colors[i % len(colors)]
+        color_to_apply = colors[i % len(colors)]
             
         x_points = np.linspace(0, width, num_lines)
         y_points = np.linspace(0, height, num_lines)
@@ -255,6 +244,7 @@ def draw_corner_frame(width, height, params, color_palette_option, bg_color, lin
 
 def draw_radial_refraction_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -265,20 +255,14 @@ def draw_radial_refraction_frame(width, height, params, color_palette_option, bg
     num_lines = int(20 + params['rms'] * 80)
     line_length = 50 + params['centroid'] * 100
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-    else:
-        colors = create_color_palette(color_palette_option, num_lines)
+    colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
     for i in range(num_lines):
         angle = (i / num_lines) * 2 * np.pi
         end_x = center_x + line_length * np.cos(angle)
         end_y = center_y + line_length * np.sin(angle)
         
-        if color_palette_option == "Personalizza":
-            color_to_apply = color_to_use
-        else:
-            color_to_apply = colors[i]
+        color_to_apply = colors[i]
         
         ax.plot([center_x, end_x], [center_y, end_y], color=color_to_apply, linewidth=2, alpha=0.7)
         
@@ -286,6 +270,7 @@ def draw_radial_refraction_frame(width, height, params, color_palette_option, bg
 
 def draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -307,19 +292,11 @@ def draw_organic_frame(width, height, params, color_palette_option, bg_color, li
             points = np.array([xs, ys]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-            if color_palette_option == "Personalizza":
-                color_to_use = get_blended_color(params, line_colors)
-                lc = LineCollection(segments, colors=[color_to_use], linewidth=2, alpha=0.8)
-            else:
-                colors = create_color_palette(color_palette_option, len(segments))
-                lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
-            
+            colors = create_color_palette(color_palette_option, len(segments), custom_colors=line_colors)
+            lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
             ax.add_collection(lc)
         except Exception:
-            if color_palette_option == "Personalizza":
-                color_to_use = get_blended_color(params, line_colors)
-            else:
-                color_to_use = "white"
+            color_to_use = create_color_palette(color_palette_option, 1, custom_colors=line_colors)[0]
             ax.plot(x, y, color=color_to_use, linewidth=2, alpha=0.8)
     return fig_to_array(fig)
 
@@ -333,6 +310,7 @@ def draw_hybrid_frame(width, height, params, color_palette_option, bg_color, lin
 
 def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -341,10 +319,7 @@ def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, li
     num_elements = int(100 + params['rms'] * 200)
     size_variation = params['centroid'] * 3
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-    else:
-        colors = create_color_palette(color_palette_option, num_elements)
+    colors = create_color_palette(color_palette_option, num_elements, custom_colors=line_colors)
     
     for i in range(num_elements):
         x = np.random.rand() * width
@@ -352,10 +327,7 @@ def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, li
         size = (5 + np.random.rand() * 20) * max(0.1, size_variation)
         shape_type = int((params['zcr'] + np.random.rand()) * 3) % 3
         
-        if color_palette_option == "Personalizza":
-            color_to_apply = color_to_use
-        else:
-            color_to_apply = colors[i % len(colors)]
+        color_to_apply = colors[i % len(colors)]
         
         if shape_type == 0:
             circle = plt.Circle((x, y), size, color=color_to_apply, alpha=0.6)
@@ -372,6 +344,7 @@ def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, li
 
 def draw_parabola_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -380,10 +353,7 @@ def draw_parabola_frame(width, height, params, color_palette_option, bg_color, l
 
     num_lines = int(50 + params['rms'] * 150)
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-    else:
-        colors = create_color_palette(color_palette_option, num_lines)
+    colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
 
     t = np.linspace(0, 1, num_lines)
     x_curve1 = t * width
@@ -397,10 +367,7 @@ def draw_parabola_frame(width, height, params, color_palette_option, bg_color, l
         x2 = x_curve2[num_lines - 1 - i]
         y2 = y_curve2[num_lines - 1 - i]
         
-        if color_palette_option == "Personalizza":
-            color_to_apply = color_to_use
-        else:
-            color_to_apply = colors[i]
+        color_to_apply = colors[i]
         
         ax.plot([x1, x2], [y1, y2], color=color_to_apply, linewidth=1.5, alpha=0.8)
     
@@ -408,6 +375,7 @@ def draw_parabola_frame(width, height, params, color_palette_option, bg_color, l
 
 def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -418,10 +386,7 @@ def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, li
     radius = 200 + params['centroid'] * 150
     center_x, center_y = width / 2, height / 2
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-    else:
-        colors = create_color_palette(color_palette_option, num_lines)
+    colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
     theta = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
     x_circle = radius * np.cos(theta) + center_x
@@ -431,10 +396,7 @@ def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, li
         x_values = [x_circle[i], x_circle[i + num_lines//2]]
         y_values = [y_circle[i], y_circle[i + num_lines//2]]
         
-        if color_palette_option == "Personalizza":
-            color_to_apply = color_to_use
-        else:
-            color_to_apply = colors[i]
+        color_to_apply = colors[i]
             
         ax.plot(x_values, y_values, color=color_to_apply, linewidth=1.5, alpha=0.8)
         
@@ -442,6 +404,7 @@ def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, li
     
 def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
     ax.axis('off')
@@ -458,19 +421,13 @@ def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, 
     x = scale * np.cos(t) + center_x
     y = scale * np.sin(t) + center_y
     
-    if color_palette_option == "Personalizza":
-        color_to_use = get_blended_color(params, line_colors)
-    else:
-        colors = create_color_palette(color_palette_option, num_points)
+    colors = create_color_palette(color_palette_option, num_points, custom_colors=line_colors)
 
     for i in range(num_points):
         source_index = i
         target_index = int((multiplier * i) % num_points)
         
-        if color_palette_option == "Personalizza":
-            color_to_apply = color_to_use
-        else:
-            color_to_apply = colors[i]
+        color_to_apply = colors[i]
 
         ax.plot([x[source_index], x[target_index]], 
                 [y[source_index], y[target_index]], 
