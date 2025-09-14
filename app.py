@@ -71,6 +71,7 @@ with st.sidebar:
     bg_color = '#000000'
     line_colors = None
     
+    # Questo blocco ora è visibile solo se si seleziona "Personalizza"
     if color_palette_option == "Personalizza":
         st.markdown("Scegli i tuoi colori personalizzati")
         bg_color = st.color_picker("Colore Sfondo", '#000000')
