@@ -3,6 +3,8 @@ import numpy as np
 import librosa
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path
 import cv2
 import imageio
 from PIL import Image, ImageDraw, ImageFont
@@ -149,22 +151,23 @@ def draw_curve_stitching_frame(width, height, params, color_palette):
     fig.tight_layout(pad=0)
 
     num_segments = int(50 + params['rms'] * 150)
-    
-    left_points = np.linspace(0, height, num_segments)
-    bottom_points = np.linspace(0, width, num_segments)
-    
-    distortion_factor = params['centroid'] * 0.5 + params['bandwidth'] * 0.5
-    
     colors = create_color_palette(color_palette, num_segments)
     
     for i in range(num_segments):
-        start_x = 0
-        start_y = left_points[i]
+        # Punti di partenza e arrivo
+        start_x, start_y = 0, np.linspace(0, height, num_segments)[i]
+        end_x, end_y = np.linspace(0, width, num_segments)[num_segments - 1 - i], 0
         
-        end_x = bottom_points[num_segments - 1 - i]
-        end_y = 0
+        # Punti di controllo per la curva. Il punto intermedio si sposta con la musica.
+        control_x = (start_x + end_x) / 2 + params['centroid'] * width * 0.2
+        control_y = (start_y + end_y) / 2 + params['bandwidth'] * height * 0.2
+
+        verts = [(start_x, start_y), (control_x, control_y), (end_x, end_y)]
+        codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
         
-        ax.plot([start_x, end_x], [start_y, end_y], color=colors[i], linewidth=1.5, alpha=0.8)
+        path = Path(verts, codes)
+        patch = PathPatch(path, facecolor='none', lw=2, edgecolor=colors[i], alpha=0.8)
+        ax.add_patch(patch)
     
     return fig_to_array(fig)
 
