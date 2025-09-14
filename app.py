@@ -60,7 +60,7 @@ with st.sidebar:
     st.subheader("Stile Artistico")
     style = st.selectbox(
         "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante"]
+        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante", "Spirale Armonica", "Vettore in Movimento"]
     )
     
     color_palette_option = st.selectbox(
@@ -435,6 +435,74 @@ def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, 
 
     return fig_to_array(fig)
 
+# --- NUOVI STILI ---
+def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_color, line_colors):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor(bg_color)
+    fig.tight_layout(pad=0)
+    
+    center_x, center_y = width / 2, height / 2
+    num_points = int(500 + params['rms'] * 1000)
+    
+    colors = create_color_palette(color_palette_option, num_points, custom_colors=line_colors)
+    
+    theta = np.linspace(0, 10 * np.pi, num_points)
+    
+    # Raggio base modificato da RMS (volume)
+    base_radius = 50 + params['rms'] * 150
+    # Modulazione della spirale basata su centroid (frequenze)
+    radius_modulation = 1 + params['centroid'] * 0.5
+    
+    r = base_radius * np.power(theta, radius_modulation)
+    
+    x = r * np.cos(theta) + center_x
+    y = r * np.sin(theta) + center_y
+    
+    # Disegna la spirale con i colori della palette
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
+    ax.add_collection(lc)
+
+    return fig_to_array(fig)
+
+def draw_moving_vector_frame(width, height, params, color_palette_option, bg_color, line_colors):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor(bg_color)
+    fig.tight_layout(pad=0)
+    
+    center_x, center_y = width / 2, height / 2
+    num_lines = int(100 + params['rms'] * 200)
+    
+    colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
+    
+    # Angolo di base e rotazione basata su ZCR (Zero Crossing Rate)
+    base_angle = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
+    rotation_speed = params['zcr'] * 2 * np.pi
+    
+    # Lunghezza dei vettori basata su RMS (volume)
+    line_length = 50 + params['rms'] * 200
+    
+    for i in range(num_lines):
+        angle = base_angle[i] + rotation_speed
+        
+        x_end = center_x + line_length * np.cos(angle)
+        y_end = center_y + line_length * np.sin(angle)
+        
+        color_to_apply = colors[i]
+        
+        ax.plot([center_x, x_end], [center_y, y_end], color=color_to_apply, linewidth=1.5, alpha=0.8)
+        
+    return fig_to_array(fig)
+
 
 def add_text_to_frame(frame, text, pos, size, color):
     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
@@ -501,7 +569,9 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
             "Rifrazione Radiale": draw_radial_refraction_frame,
             "Parabola Dinamica": draw_parabola_frame,
             "Ellisse/Cerchio": draw_ellipse_frame,
-            "Cardioide Pulsante": draw_cardioide_frame
+            "Cardioide Pulsante": draw_cardioide_frame,
+            "Spirale Armonica": draw_harmonic_spiral_frame,
+            "Vettore in Movimento": draw_moving_vector_frame
         }
 
         for i in range(total_frames):
