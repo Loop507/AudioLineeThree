@@ -13,6 +13,7 @@ import os
 from scipy.interpolate import CubicSpline
 import ffmpeg
 from colorsys import rgb_to_hsv, hsv_to_rgb
+import pandas as pd
 
 # Funzione per convertire colore esadecimale in RGB normalizzato
 def hex_to_rgb_norm(hex_color):
@@ -28,7 +29,7 @@ st.set_page_config(
 )
 
 # Titolo dell'app
-st.title("🎵 AudioLineThree by Loop507")
+st.title("AudioLineThree by Loop507")
 st.markdown("""
 Trasforma la tua musica in opere d'arte algoritmiche uniche.
 Carica un file audio e lascia che l'algoritmo generi un video con visualizzazioni geometriche
@@ -65,13 +66,12 @@ with st.sidebar:
     
     color_palette_option = st.selectbox(
         "Palette di colori",
-        ["Arcobaleno", "Pastello", "Monocromatico", "Neon", "Personalizza"]
+        ["Arcobaleno", "Monocromatico", "Neon", "Personalizza"]
     )
     
     bg_color = '#000000'
     line_colors = None
     
-    # Questo blocco ora è visibile solo se si seleziona "Personalizza"
     if color_palette_option == "Personalizza":
         st.markdown("Scegli i tuoi colori personalizzati")
         bg_color = st.color_picker("Colore Sfondo", '#000000')
@@ -108,7 +108,6 @@ with st.sidebar:
 
 # Funzioni per l'elaborazione audio
 def extract_audio_features(y, sr, frame_size, hop_length):
-    """Estrae features audio per ogni frame del video"""
     features = {}
     features['rms'] = librosa.feature.rms(y=y, frame_length=frame_size, hop_length=hop_length)[0]
     features['centroid'] = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=frame_size, hop_length=hop_length)[0]
@@ -125,8 +124,6 @@ def extract_audio_features(y, sr, frame_size, hop_length):
 def create_color_palette(palette_name, n_colors, custom_colors=None):
     if palette_name == "Arcobaleno":
         return plt.cm.rainbow(np.linspace(0, 1, n_colors))
-    elif palette_name == "Pastello":
-        return plt.cm.Pastel1(np.linspace(0, 1, n_colors))
     elif palette_name == "Monocromatico":
         colors = plt.cm.Blues(np.linspace(0.3, 0.9, n_colors))
         return colors
@@ -436,7 +433,6 @@ def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, 
 
     return fig_to_array(fig)
 
-# --- NUOVI STILI ---
 def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_color, line_colors):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
@@ -453,9 +449,7 @@ def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_c
     
     theta = np.linspace(0, 10 * np.pi, num_points)
     
-    # Raggio base modificato da RMS (volume)
     base_radius = 50 + params['rms'] * 150
-    # Modulazione della spirale basata su centroid (frequenze)
     radius_modulation = 1 + params['centroid'] * 0.5
     
     r = base_radius * np.power(theta, radius_modulation)
@@ -463,7 +457,6 @@ def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_c
     x = r * np.cos(theta) + center_x
     y = r * np.sin(theta) + center_y
     
-    # Disegna la spirale con i colori della palette
     points = np.array([x, y]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
     lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
@@ -485,11 +478,9 @@ def draw_moving_vector_frame(width, height, params, color_palette_option, bg_col
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
-    # Angolo di base e rotazione basata su ZCR (Zero Crossing Rate)
     base_angle = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
     rotation_speed = params['zcr'] * 2 * np.pi
     
-    # Lunghezza dei vettori basata su RMS (volume)
     line_length = 50 + params['rms'] * 200
     
     for i in range(num_lines):
@@ -503,7 +494,6 @@ def draw_moving_vector_frame(width, height, params, color_palette_option, bg_col
         ax.plot([center_x, x_end], [center_y, y_end], color=color_to_apply, linewidth=1.5, alpha=0.8)
         
     return fig_to_array(fig)
-
 
 def add_text_to_frame(frame, text, pos, size, color):
     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
@@ -605,11 +595,12 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
         writer.close()
         progress_bar.empty()
         status_text.empty()
-        return temp_video_path
+        
+        return temp_video_path, features
         
     except Exception as e:
         st.error(f"Errore durante la generazione dei frame: {str(e)}")
-        return None
+        return None, None
 
 def merge_audio_video(video_path, audio_path, output_path):
     try:
@@ -646,7 +637,7 @@ if audio_file and generate_button:
                 }
         
         with st.spinner("Generazione dei frame video in corso..."):
-            video_path_no_audio = generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params)
+            video_path_no_audio, video_features = generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params)
         
         if video_path_no_audio and os.path.exists(video_path_no_audio):
             st.info("Unione di video e audio in corso...")
@@ -656,7 +647,46 @@ if audio_file and generate_button:
 
             if merge_audio_video(video_path_no_audio, audio_path, final_video_path):
                 st.success("Video generato con successo!")
+                
+                # Visualizza il video e il report
                 st.video(final_video_path)
+                
+                st.markdown("---")
+                st.header("Report Dettagliato Finale")
+                
+                # Statistiche generali
+                col_gen1, col_gen2 = st.columns(2)
+                with col_gen1:
+                    st.metric("Durata Video", f"{np.mean(librosa.get_duration(path=audio_path)):.2f} secondi")
+                with col_gen2:
+                    st.metric("Fotogrammi Generati", f"{len(video_features['rms'])}")
+                
+                st.subheader("Statistiche Audio Medie")
+                
+                col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+                with col_stats1:
+                    st.metric("RMS (Volume)", f"{np.mean(video_features['rms']):.2f}")
+                with col_stats2:
+                    st.metric("Centroid (Frequenze)", f"{np.mean(video_features['centroid']):.2f}")
+                with col_stats3:
+                    st.metric("Bandwidth (Larghezza Frequenze)", f"{np.mean(video_features['bandwidth']):.2f}")
+                with col_stats4:
+                    st.metric("ZCR (Variazione Velocità)", f"{np.mean(video_features['zcr']):.2f}")
+                    
+                st.subheader("Dettagli Generazione")
+                st.write(f"**Stile Artistico:** {style}")
+                
+                # Tabella dei colori solo se la palette è personalizzata
+                if color_palette_option == "Personalizza":
+                    st.write("**Palette Colori:** Personalizzata")
+                    color_data = {
+                        "Frequenza": ["Basse", "Medie", "Alte"],
+                        "Colore HEX": [low_freq_color, mid_freq_color, high_freq_color]
+                    }
+                    df_colors = pd.DataFrame(color_data)
+                    st.table(df_colors)
+                else:
+                    st.write(f"**Palette Colori:** {color_palette_option}")
                 
                 try:
                     with open(final_video_path, "rb") as f:
@@ -678,39 +708,3 @@ if audio_file and generate_button:
         for p in [audio_path, video_path_no_audio, final_video_path]:
             if p and os.path.exists(p):
                 os.unlink(p)
-
-else:
-    st.info("""
-    ### Istruzioni:
-    1. Carica un file audio usando il pannello a sinistra
-    2. Regola i parametri del video (formato, FPS)
-    3. Scegli lo stile artistico e la palette di colori
-    4. **Opzionale:** Abilita e personalizza il titolo
-    5. Clicca 'Genera Video' per creare la tua opera d'arte algoritmica
-    """)
-    
-    st.subheader("Formati di esportazione disponibili")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.write("**Formato 1:1 (Quadrato)**")
-        st.write("Perfetto per Instagram e social media")
-        st.write("Dimensioni: 800x800 px")
-    with col2:
-        st.write("**Formato 9:16 (Verticale)**")
-        st.write("Ideale per TikTok e Instagram Stories")
-        st.write("Dimensioni: 540x960 px")
-    with col3:
-        st.write("**Formato 16:9 (Orizzontale)**")
-        st.write("Perfetto per YouTube e presentazioni")
-        st.write("Dimensioni: 1280x720 px")
-
-st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align: center'>
-        <p>AudioLineThree by Loop507 - Realizzato con Python e Streamlit</p>
-        <p>Converte file audio in visualizzazioni artistiche algoritmiche</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
