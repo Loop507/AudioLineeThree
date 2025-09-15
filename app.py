@@ -71,18 +71,24 @@ with st.sidebar:
     
     bg_color = '#000000'
     line_colors = None
+    custom_palette_data = None
     
     if color_palette_option == "Personalizza":
         st.markdown("Scegli i tuoi colori personalizzati")
         bg_color = st.color_picker("Colore Sfondo", '#000000')
         col1, col2, col3 = st.columns(3)
         with col1:
-            low_freq_color = st.color_picker("Colore Basse Frequenze", '#007FFF')
+            low_freq_color_hex = st.color_picker("Colore Basse Frequenze", '#007FFF')
         with col2:
-            mid_freq_color = st.color_picker("Colore Medie Frequenze", '#32CD32')
+            mid_freq_color_hex = st.color_picker("Colore Medie Frequenze", '#32CD32')
         with col3:
-            high_freq_color = st.color_picker("Colore Alte Frequenze", '#FF4500')
-        line_colors = [low_freq_color, mid_freq_color, high_freq_color]
+            high_freq_color_hex = st.color_picker("Colore Alte Frequenze", '#FF4500')
+        line_colors = [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
+        custom_palette_data = {
+            "Frequenza": ["Basse", "Medie", "Alte"],
+            "Nome Colore": ["Colore Basse Frequenze", "Colore Medie Frequenze", "Colore Alte Frequenze"],
+            "Codice HEX": [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
+        }
 
     # Sezione per il titolo
     st.subheader("Titolo Video")
@@ -533,7 +539,7 @@ def add_text_to_frame(frame, text, pos, size, color):
 def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None):
     try:
         y, sr = librosa.load(audio_path)
-        video_duration = len(y) / sr
+        video_duration = librosa.get_duration(y=y, sr=sr)
         
         total_frames = int(video_duration * fps)
         hop_length = max(1, len(y) // total_frames)
@@ -657,7 +663,7 @@ if audio_file and generate_button:
                 # Statistiche generali
                 col_gen1, col_gen2 = st.columns(2)
                 with col_gen1:
-                    st.metric("Durata Video", f"{np.mean(librosa.get_duration(path=audio_path)):.2f} secondi")
+                    st.metric("Durata Video", f"{librosa.get_duration(path=audio_path):.2f} secondi")
                 with col_gen2:
                     st.metric("Fotogrammi Generati", f"{len(video_features['rms'])}")
                 
@@ -679,11 +685,7 @@ if audio_file and generate_button:
                 # Tabella dei colori solo se la palette è personalizzata
                 if color_palette_option == "Personalizza":
                     st.write("**Palette Colori:** Personalizzata")
-                    color_data = {
-                        "Frequenza": ["Basse", "Medie", "Alte"],
-                        "Nome Colore": ["Basse Frequenze", "Medie Frequenze", "Alte Frequenze"]
-                    }
-                    df_colors = pd.DataFrame(color_data)
+                    df_colors = pd.DataFrame(custom_palette_data)
                     st.table(df_colors)
                 else:
                     st.write(f"**Palette Colori:** {color_palette_option}")
