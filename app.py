@@ -681,7 +681,7 @@ if audio_file and generate_button:
                     st.write("**Palette Colori:** Personalizzata")
                     color_data = {
                         "Frequenza": ["Basse", "Medie", "Alte"],
-                        "Colore HEX": [low_freq_color, mid_freq_color, high_freq_color]
+                        "Nome Colore": ["Basse Frequenze", "Medie Frequenze", "Alte Frequenze"]
                     }
                     df_colors = pd.DataFrame(color_data)
                     st.table(df_colors)
