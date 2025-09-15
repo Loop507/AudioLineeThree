@@ -84,11 +84,18 @@ with st.sidebar:
         with col3:
             high_freq_color_hex = st.color_picker("Colore Alte Frequenze", '#FF4500')
         line_colors = [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
+
+        # Mappa i colori predefiniti ai nomi specifici, altrimenti usa il nome generico
+        name_for_low = "Blu" if low_freq_color_hex == '#007FFF' else "Colore Basse Frequenze"
+        name_for_mid = "Verde" if mid_freq_color_hex == '#32CD32' else "Colore Medie Frequenze"
+        name_for_high = "Arancione" if high_freq_color_hex == '#FF4500' else "Colore Alte Frequenze"
+
         custom_palette_data = {
             "Frequenza": ["Basse", "Medie", "Alte"],
-            "Nome Colore": ["Colore Basse Frequenze", "Colore Medie Frequenze", "Colore Alte Frequenze"],
+            "Nome Colore": [name_for_low, name_for_mid, name_for_high],
             "Codice HEX": [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
         }
+
 
     # Sezione per il titolo
     st.subheader("Titolo Video")
