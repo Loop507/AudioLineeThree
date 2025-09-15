@@ -12,7 +12,6 @@ import tempfile
 import os
 from scipy.interpolate import CubicSpline
 import ffmpeg
-from colorsys import rgb_to_hsv, hsv_to_rgb
 import pandas as pd
 
 # Funzione per convertire colore esadecimale in RGB normalizzato
@@ -64,6 +63,14 @@ with st.sidebar:
         ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante", "Spirale Armonica", "Vettore in Movimento"]
     )
     
+    # Nuovi controlli per la personalizzazione
+    st.subheader("Controlli Visivi Personalizzati")
+    base_line_count = st.slider("Numero di Linee Base", 10, 200, 50)
+    base_distortion_factor = st.slider("Fattore di Distorsione Base", 0.0, 5.0, 1.0)
+    rms_sensitivity = st.slider("Sensibilità RMS (Volume)", 0.0, 2.0, 1.0)
+    centroid_sensitivity = st.slider("Sensibilità Centroid (Frequenze)", 0.0, 2.0, 1.0)
+    
+    st.subheader("Palette di colori")
     color_palette_option = st.selectbox(
         "Palette di colori",
         ["Arcobaleno", "Monocromatico", "Neon", "Personalizza"]
@@ -95,7 +102,6 @@ with st.sidebar:
             "Nome Colore": [name_for_low, name_for_mid, name_for_high],
             "Codice HEX": [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
         }
-
 
     # Sezione per il titolo
     st.subheader("Titolo Video")
@@ -176,7 +182,7 @@ def fig_to_array(fig):
     plt.close(fig)
     return img
 
-def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -185,8 +191,8 @@ def draw_geometric_frame(width, height, params, color_palette_option, bg_color, 
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
     
-    num_lines = int(20 + params['rms'] * 100)
-    distortion = params['centroid'] * 2
+    num_lines = int(base_line_count + params['rms'] * 100 * rms_sensitivity)
+    distortion = base_distortion_factor + params['centroid'] * 2 * centroid_sensitivity
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
 
@@ -198,7 +204,7 @@ def draw_geometric_frame(width, height, params, color_palette_option, bg_color, 
         ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
 
-def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -207,16 +213,16 @@ def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_c
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
 
-    num_segments = int(50 + params['rms'] * 150)
+    num_segments = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
     
     colors = create_color_palette(color_palette_option, num_segments, custom_colors=line_colors)
     
     for i in range(num_segments):
         start_x, start_y = 0, np.linspace(0, height, num_segments)[i]
         end_x, end_y = np.linspace(0, width, num_segments)[num_segments - 1 - i], 0
-        control_x = (start_x + end_x) / 2 + params['centroid'] * width * 0.2
+        control_x = (start_x + end_x) / 2 + params['centroid'] * width * 0.2 * centroid_sensitivity
         control_y = (start_y + end_y) / 2 + params['bandwidth'] * height * 0.2
-
+        
         verts = [(start_x, start_y), (control_x, control_y), (end_x, end_y)]
         codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
         
@@ -227,7 +233,7 @@ def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_c
     
     return fig_to_array(fig)
 
-def draw_corner_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_corner_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -236,7 +242,7 @@ def draw_corner_frame(width, height, params, color_palette_option, bg_color, lin
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
 
-    num_lines = int(20 + params['rms'] * 80)
+    num_lines = int(base_line_count + params['rms'] * 80 * rms_sensitivity)
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
@@ -253,7 +259,7 @@ def draw_corner_frame(width, height, params, color_palette_option, bg_color, lin
     
     return fig_to_array(fig)
 
-def draw_radial_refraction_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_radial_refraction_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -263,8 +269,8 @@ def draw_radial_refraction_frame(width, height, params, color_palette_option, bg
     fig.tight_layout(pad=0)
     
     center_x, center_y = width / 2, height / 2
-    num_lines = int(20 + params['rms'] * 80)
-    line_length = 50 + params['centroid'] * 100
+    num_lines = int(base_line_count + params['rms'] * 80 * rms_sensitivity)
+    line_length = 50 + params['centroid'] * 100 * centroid_sensitivity
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
@@ -279,7 +285,7 @@ def draw_radial_refraction_frame(width, height, params, color_palette_option, bg
         
     return fig_to_array(fig)
 
-def draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -287,9 +293,9 @@ def draw_organic_frame(width, height, params, color_palette_option, bg_color, li
     ax.axis('off')
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
-    num_points = 50
-    distortion_x = params['rms'] * 50
-    distortion_y = params['centroid'] * 30
+    num_points = int(base_line_count + params['rms'] * 50 * rms_sensitivity)
+    distortion_x = base_distortion_factor + params['rms'] * 50 * rms_sensitivity
+    distortion_y = base_distortion_factor + params['centroid'] * 30 * centroid_sensitivity
     frequency = 0.1 + params['bandwidth'] * 0.3
     x = np.linspace(0, width, num_points)
     y = np.linspace(height/2, height/2, num_points)
@@ -311,15 +317,15 @@ def draw_organic_frame(width, height, params, color_palette_option, bg_color, li
             ax.plot(x, y, color=color_to_use, linewidth=2, alpha=0.8)
     return fig_to_array(fig)
 
-def draw_hybrid_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_hybrid_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     geometric_weight = params['rms']
     organic_weight = 1 - geometric_weight
-    geometric_img = draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors)
-    organic_img = draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors)
+    geometric_img = draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity)
+    organic_img = draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity)
     blended_img = cv2.addWeighted(geometric_img, geometric_weight, organic_img, organic_weight, 0)
     return blended_img
 
-def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -327,8 +333,8 @@ def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, li
     ax.axis('off')
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
-    num_elements = int(100 + params['rms'] * 200)
-    size_variation = params['centroid'] * 3
+    num_elements = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
+    size_variation = base_distortion_factor + params['centroid'] * 3 * centroid_sensitivity
     
     colors = create_color_palette(color_palette_option, num_elements, custom_colors=line_colors)
     
@@ -353,7 +359,7 @@ def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, li
             ax.plot([x, x+dx], [y, y+dy], color=color_to_apply, linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
-def draw_parabola_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_parabola_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -362,13 +368,13 @@ def draw_parabola_frame(width, height, params, color_palette_option, bg_color, l
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
 
-    num_lines = int(50 + params['rms'] * 150)
+    num_lines = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
 
     t = np.linspace(0, 1, num_lines)
     x_curve1 = t * width
-    y_curve1 = params['rms'] * height * np.sin(t * np.pi * 2 + params['centroid'] * 5)
+    y_curve1 = params['rms'] * height * rms_sensitivity * np.sin(t * np.pi * 2 + params['centroid'] * 5 * centroid_sensitivity)
     x_curve2 = width * (1 - t)
     y_curve2 = height + params['bandwidth'] * height * np.cos(t * np.pi * 2 + params['zcr'] * 5)
 
@@ -384,7 +390,7 @@ def draw_parabola_frame(width, height, params, color_palette_option, bg_color, l
     
     return fig_to_array(fig)
 
-def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -393,8 +399,8 @@ def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, li
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
     
-    num_lines = int(50 + params['rms'] * 150)
-    radius = 200 + params['centroid'] * 150
+    num_lines = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
+    radius = base_distortion_factor * 200 + params['centroid'] * 150 * centroid_sensitivity
     center_x, center_y = width / 2, height / 2
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
@@ -413,7 +419,7 @@ def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, li
         
     return fig_to_array(fig)
     
-def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -422,8 +428,8 @@ def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, 
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
     
-    num_points = int(50 + params['rms'] * 150)
-    multiplier = 2 + params['centroid'] * 5
+    num_points = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
+    multiplier = base_distortion_factor + params['centroid'] * 5 * centroid_sensitivity
     scale = 200 + params['bandwidth'] * 100
     
     center_x, center_y = width / 2, height / 2
@@ -446,7 +452,7 @@ def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, 
 
     return fig_to_array(fig)
 
-def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -456,14 +462,14 @@ def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_c
     fig.tight_layout(pad=0)
     
     center_x, center_y = width / 2, height / 2
-    num_points = int(500 + params['rms'] * 1000)
+    num_points = int(base_line_count * 10 + params['rms'] * 1000 * rms_sensitivity)
     
     colors = create_color_palette(color_palette_option, num_points, custom_colors=line_colors)
     
     theta = np.linspace(0, 10 * np.pi, num_points)
     
-    base_radius = 50 + params['rms'] * 150
-    radius_modulation = 1 + params['centroid'] * 0.5
+    base_radius = base_line_count + params['rms'] * 150 * rms_sensitivity
+    radius_modulation = base_distortion_factor + params['centroid'] * 0.5 * centroid_sensitivity
     
     r = base_radius * np.power(theta, radius_modulation)
     
@@ -477,7 +483,7 @@ def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_c
 
     return fig_to_array(fig)
 
-def draw_moving_vector_frame(width, height, params, color_palette_option, bg_color, line_colors):
+def draw_moving_vector_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
     ax.set_xlim(0, width)
@@ -487,14 +493,14 @@ def draw_moving_vector_frame(width, height, params, color_palette_option, bg_col
     fig.tight_layout(pad=0)
     
     center_x, center_y = width / 2, height / 2
-    num_lines = int(100 + params['rms'] * 200)
+    num_lines = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
     base_angle = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
-    rotation_speed = params['zcr'] * 2 * np.pi
+    rotation_speed = params['zcr'] * 2 * np.pi * base_distortion_factor
     
-    line_length = 50 + params['rms'] * 200
+    line_length = base_line_count + params['rms'] * 200 * rms_sensitivity
     
     for i in range(num_lines):
         angle = base_angle[i] + rotation_speed
@@ -543,7 +549,7 @@ def add_text_to_frame(frame, text, pos, size, color):
     
     return np.array(img_pil)
 
-def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None):
+def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, base_line_count=50, base_distortion_factor=1.0, rms_sensitivity=1.0, centroid_sensitivity=1.0):
     try:
         y, sr = librosa.load(audio_path)
         video_duration = librosa.get_duration(y=y, sr=sr)
@@ -588,7 +594,11 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
                     frame_features,
                     color_palette_option,
                     bg_color,
-                    line_colors
+                    line_colors,
+                    base_line_count,
+                    base_distortion_factor,
+                    rms_sensitivity,
+                    centroid_sensitivity
                 )
             
             if title_params and title_params.get('text'):
@@ -650,7 +660,10 @@ if audio_file and generate_button:
                 }
         
         with st.spinner("Generazione dei frame video in corso..."):
-            video_path_no_audio, video_features = generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params)
+            video_path_no_audio, video_features = generate_video_frames(
+                audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params,
+                base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity
+            )
         
         if video_path_no_audio and os.path.exists(video_path_no_audio):
             st.info("Unione di video e audio in corso...")
