@@ -30,7 +30,7 @@ def fig_to_array(fig):
 # Funzione per creare la palette di colori
 def create_color_palette(palette_name, n_colors, custom_colors=None):
     if n_colors <= 0:
-        return np.array([[0, 0, 0, 0]]) # Restituisce un colore trasparente se non ci sono linee
+        return np.array([[0, 0, 0, 0]])
     if palette_name == "Arcobaleno":
         return plt.cm.rainbow(np.linspace(0, 1, n_colors))
     elif palette_name == "Monocromatico":
@@ -100,7 +100,6 @@ def interpolate_value(keyframes, current_time):
         t1, t2 = times[i], times[i+1]
         v1, v2 = values[i], values[i+1]
         
-        # Gestione per evitare la divisione per zero se i tempi sono uguali
         if t1 == t2:
             return v1
             
@@ -124,7 +123,7 @@ def extract_audio_features(y, sr, frame_size, hop_length):
     
     return features
 
-# Funzioni di rendering (rimaste invariate)
+# Funzioni di rendering
 def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
@@ -473,7 +472,7 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
                     color_palette_option,
                     bg_color,
                     line_colors,
-                    base_line_count,
+                    max(1, base_line_count),
                     base_distortion_factor,
                     rms_sensitivity,
                     centroid_sensitivity
