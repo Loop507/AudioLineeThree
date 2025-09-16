@@ -19,117 +19,49 @@ def hex_to_rgb_norm(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) / 255.0 for i in (0, 2, 4))
 
-# Configurazione della pagina
-st.set_page_config(
-    page_title="AudioLineThree by Loop507",
-    page_icon="🎵",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Funzione per convertire una figura Matplotlib in un array di pixel
+def fig_to_array(fig):
+    fig.canvas.draw()
+    img = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).reshape(fig.canvas.get_width_height()[::-1] + (4,))
+    img = img[:, :, :3]
+    plt.close(fig)
+    return img
 
-# Titolo dell'app
-st.title("AudioLineThree by Loop507")
-st.markdown("""
-Trasforma la tua musica in opere d'arte algoritmiche uniche.
-Carica un file audio e lascia che l'algoritmo generi un video con visualizzazioni geometriche
-che si evolvono con il suono.
-""")
-
-# Sidebar per i controlli
-with st.sidebar:
-    st.header("Controlli")
-    
-    audio_file = st.file_uploader("Carica un file audio", type=['wav', 'mp3', 'ogg', 'flac'])
-    
-    st.subheader("Parametri Video")
-    
-    aspect_ratio = st.selectbox(
-        "Formato di esportazione",
-        ["1:1 (Quadrato)", "9:16 (Verticale)", "16:9 (Orizzontale)"]
-    )
-    
-    if aspect_ratio == "1:1 (Quadrato)":
-        width, height = 800, 800
-    elif aspect_ratio == "9:16 (Verticale)":
-        width, height = 540, 960
+# Funzione per creare la palette di colori
+def create_color_palette(palette_name, n_colors, custom_colors=None):
+    if palette_name == "Arcobaleno":
+        return plt.cm.rainbow(np.linspace(0, 1, n_colors))
+    elif palette_name == "Monocromatico":
+        colors = plt.cm.Blues(np.linspace(0.3, 0.9, n_colors))
+        return colors
+    elif palette_name == "Neon":
+        colors = []
+        for i in range(n_colors):
+            r = np.sin(0.3 * i + 0) * 0.5 + 0.5
+            g = np.sin(0.3 * i + 2) * 0.5 + 0.5
+            b = np.sin(0.3 * i + 4) * 0.5 + 0.5
+            colors.append([r, g, b, 1.0])
+        return np.array(colors)
+    elif palette_name == "Personalizza" and custom_colors and len(custom_colors) == 3:
+        r1, g1, b1 = hex_to_rgb_norm(custom_colors[0])
+        r2, g2, b2 = hex_to_rgb_norm(custom_colors[1])
+        r3, g3, b3 = hex_to_rgb_norm(custom_colors[2])
+        
+        colors = []
+        for i in range(n_colors):
+            t = i / (n_colors - 1)
+            if t < 0.5:
+                r_new = r1 + (r2 - r1) * t * 2
+                g_new = g1 + (g2 - g1) * t * 2
+                b_new = b1 + (b2 - b1) * t * 2
+            else:
+                r_new = r2 + (r3 - r2) * (t - 0.5) * 2
+                g_new = g2 + (g3 - g2) * (t - 0.5) * 2
+                b_new = b2 + (b3 - b2) * (t - 0.5) * 2
+            colors.append([r_new, g_new, b_new, 1.0])
+        return np.array(colors)
     else:
-        width, height = 1280, 720
-        
-    fps = st.slider("FPS", 10, 60, 24)
-    
-    st.subheader("Stile Artistico")
-    style = st.selectbox(
-        "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante", "Spirale Armonica", "Vettore in Movimento"]
-    )
-    
-    # Nuovi controlli per la personalizzazione
-    st.subheader("Controlli Visivi Personalizzati")
-    
-    # Keyframing per il numero di linee
-    keyframes_line_count_str = st.text_input(
-        "Keyframes Numero Linee (Es: 0:10, 5:100)",
-        value="0:50",
-        help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, l'animazione non verrà applicata."
-    )
-    
-    base_distortion_factor = st.slider("Fattore di Distorsione Base", 0.0, 5.0, 1.0)
-    rms_sensitivity = st.slider("Sensibilità RMS (Volume)", 0.0, 2.0, 1.0)
-    centroid_sensitivity = st.slider("Sensibilità Centroid (Frequenze)", 0.0, 2.0, 1.0)
-    
-    st.subheader("Palette di colori")
-    color_palette_option = st.selectbox(
-        "Palette di colori",
-        ["Arcobaleno", "Monocromatico", "Neon", "Personalizza"]
-    )
-    
-    bg_color = '#000000'
-    line_colors = None
-    custom_palette_data = None
-    
-    if color_palette_option == "Personalizza":
-        st.markdown("Scegli i tuoi colori personalizzati")
-        bg_color = st.color_picker("Colore Sfondo", '#000000')
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            low_freq_color_hex = st.color_picker("Colore Basse Frequenze", '#007FFF')
-        with col2:
-            mid_freq_color_hex = st.color_picker("Colore Medie Frequenze", '#32CD32')
-        with col3:
-            high_freq_color_hex = st.color_picker("Colore Alte Frequenze", '#FF4500')
-        line_colors = [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
-
-        name_for_low = "Blu" if low_freq_color_hex == '#007FFF' else "Colore Basse Frequenze"
-        name_for_mid = "Verde" if mid_freq_color_hex == '#32CD32' else "Colore Medie Frequenze"
-        name_for_high = "Arancione" if high_freq_color_hex == '#FF4500' else "Colore Alte Frequenze"
-
-        custom_palette_data = {
-            "Frequenza": ["Basse", "Medie", "Alte"],
-            "Nome Colore": [name_for_low, name_for_mid, name_for_high],
-            "Codice HEX": [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
-        }
-
-    # Sezione per il titolo
-    st.subheader("Titolo Video")
-    
-    enable_title = st.checkbox("Abilita Titolo")
-    
-    if enable_title:
-        title_text = st.text_input("Testo del Titolo", value="Il Mio Titolo")
-        
-        col_pos1, col_pos2 = st.columns(2)
-        with col_pos1:
-            title_v_pos = st.selectbox("Posizione Verticale", ["Sopra", "Sotto"])
-        with col_pos2:
-            title_h_pos = st.selectbox("Posizione Orizzontale", ["Sinistra", "Destra"])
-            
-        col_style1, col_style2 = st.columns(2)
-        with col_style1:
-            title_size = st.slider("Dimensione Testo", 20, 100, 40)
-        with col_style2:
-            title_color = st.color_picker("Colore Testo", "#FFFFFF")
-
-    generate_button = st.button("Genera Video", type="primary")
+        return plt.cm.viridis(np.linspace(0, 1, n_colors))
 
 # Funzione per convertire la stringa di keyframe in un dizionario
 def parse_keyframes(kf_string):
@@ -185,7 +117,7 @@ def extract_audio_features(y, sr, frame_size, hop_length):
     
     return features
 
-# Funzioni di rendering (le funzioni di disegno rimangono le stesse)
+# Funzioni di rendering
 def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
@@ -648,6 +580,118 @@ def merge_audio_video(video_path, audio_path, output_path):
     except Exception as e:
         st.error(f"Errore durante l'unione di video e audio: {str(e)}")
         return False
+
+# Configurazione della pagina
+st.set_page_config(
+    page_title="AudioLineThree by Loop507",
+    page_icon="🎵",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Titolo dell'app
+st.title("AudioLineThree by Loop507")
+st.markdown("""
+Trasforma la tua musica in opere d'arte algoritmiche uniche.
+Carica un file audio e lascia che l'algoritmo generi un video con visualizzazioni geometriche
+che si evolvono con il suono.
+""")
+
+# Sidebar per i controlli
+with st.sidebar:
+    st.header("Controlli")
+    
+    audio_file = st.file_uploader("Carica un file audio", type=['wav', 'mp3', 'ogg', 'flac'])
+    
+    st.subheader("Parametri Video")
+    
+    aspect_ratio = st.selectbox(
+        "Formato di esportazione",
+        ["1:1 (Quadrato)", "9:16 (Verticale)", "16:9 (Orizzontale)"]
+    )
+    
+    if aspect_ratio == "1:1 (Quadrato)":
+        width, height = 800, 800
+    elif aspect_ratio == "9:16 (Verticale)":
+        width, height = 540, 960
+    else:
+        width, height = 1280, 720
+        
+    fps = st.slider("FPS", 10, 60, 24)
+    
+    st.subheader("Stile Artistico")
+    style = st.selectbox(
+        "Seleziona lo stile",
+        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante", "Spirale Armonica", "Vettore in Movimento"]
+    )
+    
+    # Nuovi controlli per la personalizzazione
+    st.subheader("Controlli Visivi Personalizzati")
+    
+    # Keyframing per il numero di linee
+    keyframes_line_count_str = st.text_input(
+        "Keyframes Numero Linee (Es: 0:10, 5:100)",
+        value="0:50",
+        help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, l'animazione non verrà applicata."
+    )
+    
+    base_distortion_factor = st.slider("Fattore di Distorsione Base", 0.0, 5.0, 1.0)
+    rms_sensitivity = st.slider("Sensibilità RMS (Volume)", 0.0, 2.0, 1.0)
+    centroid_sensitivity = st.slider("Sensibilità Centroid (Frequenze)", 0.0, 2.0, 1.0)
+    
+    st.subheader("Palette di colori")
+    color_palette_option = st.selectbox(
+        "Palette di colori",
+        ["Arcobaleno", "Monocromatico", "Neon", "Personalizza"]
+    )
+    
+    bg_color = '#000000'
+    line_colors = None
+    custom_palette_data = None
+    
+    if color_palette_option == "Personalizza":
+        st.markdown("Scegli i tuoi colori personalizzati")
+        bg_color = st.color_picker("Colore Sfondo", '#000000')
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            low_freq_color_hex = st.color_picker("Colore Basse Frequenze", '#007FFF')
+        with col2:
+            mid_freq_color_hex = st.color_picker("Colore Medie Frequenze", '#32CD32')
+        with col3:
+            high_freq_color_hex = st.color_picker("Colore Alte Frequenze", '#FF4500')
+        line_colors = [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
+
+        name_for_low = "Blu" if low_freq_color_hex == '#007FFF' else "Colore Basse Frequenze"
+        name_for_mid = "Verde" if mid_freq_color_hex == '#32CD32' else "Colore Medie Frequenze"
+        name_for_high = "Arancione" if high_freq_color_hex == '#FF4500' else "Colore Alte Frequenze"
+
+        custom_palette_data = {
+            "Frequenza": ["Basse", "Medie", "Alte"],
+            "Nome Colore": [name_for_low, name_for_mid, name_for_high],
+            "Codice HEX": [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
+        }
+
+    # Sezione per il titolo
+    st.subheader("Titolo Video")
+    
+    enable_title = st.checkbox("Abilita Titolo")
+    
+    if enable_title:
+        title_text = st.text_input("Testo del Titolo", value="Il Mio Titolo")
+        
+        col_pos1, col_pos2 = st.columns(2)
+        with col_pos1:
+            title_v_pos = st.selectbox("Posizione Verticale", ["Sopra", "Sotto"])
+        with col_pos2:
+            title_h_pos = st.selectbox("Posizione Orizzontale", ["Sinistra", "Destra"])
+            
+        col_style1, col_style2 = st.columns(2)
+        with col_style1:
+            title_size = st.slider("Dimensione Testo", 20, 100, 40)
+        with col_style2:
+            title_color = st.color_picker("Colore Testo", "#FFFFFF")
+
+    generate_button = st.button("Genera Video", type="primary")
 
 # Logica principale dell'app
 if audio_file and generate_button:
