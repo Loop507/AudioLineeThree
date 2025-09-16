@@ -65,7 +65,14 @@ with st.sidebar:
     
     # Nuovi controlli per la personalizzazione
     st.subheader("Controlli Visivi Personalizzati")
-    base_line_count = st.slider("Numero di Linee Base", 10, 200, 50)
+    
+    # Keyframing per il numero di linee
+    keyframes_line_count_str = st.text_input(
+        "Keyframes Numero Linee (Es: 0:10, 5:100)",
+        value="0:50",
+        help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, usa il valore di default."
+    )
+    
     base_distortion_factor = st.slider("Fattore di Distorsione Base", 0.0, 5.0, 1.0)
     rms_sensitivity = st.slider("Sensibilità RMS (Volume)", 0.0, 2.0, 1.0)
     centroid_sensitivity = st.slider("Sensibilità Centroid (Frequenze)", 0.0, 2.0, 1.0)
@@ -92,7 +99,6 @@ with st.sidebar:
             high_freq_color_hex = st.color_picker("Colore Alte Frequenze", '#FF4500')
         line_colors = [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
 
-        # Mappa i colori predefiniti ai nomi specifici, altrimenti usa il nome generico
         name_for_low = "Blu" if low_freq_color_hex == '#007FFF' else "Colore Basse Frequenze"
         name_for_mid = "Verde" if mid_freq_color_hex == '#32CD32' else "Colore Medie Frequenze"
         name_for_high = "Arancione" if high_freq_color_hex == '#FF4500' else "Colore Alte Frequenze"
@@ -124,6 +130,42 @@ with st.sidebar:
             title_color = st.color_picker("Colore Testo", "#FFFFFF")
 
     generate_button = st.button("Genera Video", type="primary")
+
+# Funzione per convertire la stringa di keyframe in un dizionario
+def parse_keyframes(kf_string):
+    if not kf_string:
+        return {}
+    keyframes = {}
+    parts = kf_string.split(',')
+    for part in parts:
+        try:
+            time_str, val_str = part.split(':')
+            time = float(time_str.strip())
+            value = float(val_str.strip())
+            keyframes[time] = value
+        except ValueError:
+            st.warning(f"Formato keyframe non valido: '{part}'. Ignorato.")
+    return keyframes
+
+# Funzione per interpolare il valore di un keyframe in un dato momento
+def interpolate_value(keyframes, current_time):
+    if not keyframes:
+        return 50.0 # Valore di default
+    
+    times = sorted(keyframes.keys())
+    values = [keyframes[t] for t in times]
+    
+    if current_time <= times[0]:
+        return values[0]
+    if current_time >= times[-1]:
+        return values[-1]
+    
+    for i in range(len(times) - 1):
+        t1, t2 = times[i], times[i+1]
+        v1, v2 = values[i], values[i+1]
+        if t1 <= current_time <= t2:
+            progress = (current_time - t1) / (t2 - t1)
+            return v1 + progress * (v2 - v1)
 
 # Funzioni per l'elaborazione audio
 def extract_audio_features(y, sr, frame_size, hop_length):
@@ -270,7 +312,7 @@ def draw_radial_refraction_frame(width, height, params, color_palette_option, bg
     
     center_x, center_y = width / 2, height / 2
     num_lines = int(base_line_count + params['rms'] * 80 * rms_sensitivity)
-    line_length = 50 + params['centroid'] * 100 * centroid_sensitivity
+    line_length = base_distortion_factor * 50 + params['centroid'] * 100 * centroid_sensitivity
     
     colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
     
@@ -549,7 +591,7 @@ def add_text_to_frame(frame, text, pos, size, color):
     
     return np.array(img_pil)
 
-def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, base_line_count=50, base_distortion_factor=1.0, rms_sensitivity=1.0, centroid_sensitivity=1.0):
+def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, keyframes_line_count=None, base_distortion_factor=1.0, rms_sensitivity=1.0, centroid_sensitivity=1.0):
     try:
         y, sr = librosa.load(audio_path)
         video_duration = librosa.get_duration(y=y, sr=sr)
@@ -585,6 +627,11 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
         }
 
         for i in range(total_frames):
+            current_time = i / fps
+            
+            # Interpolazione per il numero di linee
+            base_line_count = interpolate_value(keyframes_line_count, current_time)
+            
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             
             if style in drawing_functions:
@@ -659,10 +706,12 @@ if audio_file and generate_button:
                     'color': title_color
                 }
         
+        keyframes_line_count = parse_keyframes(keyframes_line_count_str)
+        
         with st.spinner("Generazione dei frame video in corso..."):
             video_path_no_audio, video_features = generate_video_frames(
                 audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params,
-                base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity
+                keyframes_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity
             )
         
         if video_path_no_audio and os.path.exists(video_path_no_audio):
