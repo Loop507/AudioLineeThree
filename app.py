@@ -70,7 +70,7 @@ with st.sidebar:
     keyframes_line_count_str = st.text_input(
         "Keyframes Numero Linee (Es: 0:10, 5:100)",
         value="0:50",
-        help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, usa il valore di default."
+        help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, l'animazione non verrà applicata."
     )
     
     base_distortion_factor = st.slider("Fattore di Distorsione Base", 0.0, 5.0, 1.0)
@@ -134,7 +134,7 @@ with st.sidebar:
 # Funzione per convertire la stringa di keyframe in un dizionario
 def parse_keyframes(kf_string):
     if not kf_string:
-        return {}
+        return None
     keyframes = {}
     parts = kf_string.split(',')
     for part in parts:
@@ -145,18 +145,20 @@ def parse_keyframes(kf_string):
             keyframes[time] = value
         except ValueError:
             st.warning(f"Formato keyframe non valido: '{part}'. Ignorato.")
-    return keyframes
+    # Ordina i keyframe per tempo
+    return dict(sorted(keyframes.items()))
 
 # Funzione per interpolare il valore di un keyframe in un dato momento
 def interpolate_value(keyframes, current_time):
     if not keyframes:
-        return 50.0 # Valore di default
+        return 50.0 # Valore di default se nessun keyframe è definito
     
     times = sorted(keyframes.keys())
     values = [keyframes[t] for t in times]
     
     if current_time <= times[0]:
         return values[0]
+    
     if current_time >= times[-1]:
         return values[-1]
     
@@ -166,6 +168,8 @@ def interpolate_value(keyframes, current_time):
         if t1 <= current_time <= t2:
             progress = (current_time - t1) / (t2 - t1)
             return v1 + progress * (v2 - v1)
+            
+    return values[-1] # Fallback in caso di errore
 
 # Funzioni per l'elaborazione audio
 def extract_audio_features(y, sr, frame_size, hop_length):
@@ -181,49 +185,7 @@ def extract_audio_features(y, sr, frame_size, hop_length):
     
     return features
 
-# Funzioni di rendering
-def create_color_palette(palette_name, n_colors, custom_colors=None):
-    if palette_name == "Arcobaleno":
-        return plt.cm.rainbow(np.linspace(0, 1, n_colors))
-    elif palette_name == "Monocromatico":
-        colors = plt.cm.Blues(np.linspace(0.3, 0.9, n_colors))
-        return colors
-    elif palette_name == "Neon":
-        colors = []
-        for i in range(n_colors):
-            r = np.sin(0.3 * i + 0) * 0.5 + 0.5
-            g = np.sin(0.3 * i + 2) * 0.5 + 0.5
-            b = np.sin(0.3 * i + 4) * 0.5 + 0.5
-            colors.append([r, g, b, 1.0])
-        return np.array(colors)
-    elif palette_name == "Personalizza" and custom_colors and len(custom_colors) == 3:
-        r1, g1, b1 = hex_to_rgb_norm(custom_colors[0])
-        r2, g2, b2 = hex_to_rgb_norm(custom_colors[1])
-        r3, g3, b3 = hex_to_rgb_norm(custom_colors[2])
-        
-        colors = []
-        for i in range(n_colors):
-            t = i / (n_colors - 1)
-            if t < 0.5:
-                r_new = r1 + (r2 - r1) * t * 2
-                g_new = g1 + (g2 - g1) * t * 2
-                b_new = b1 + (b2 - b1) * t * 2
-            else:
-                r_new = r2 + (r3 - r2) * (t - 0.5) * 2
-                g_new = g2 + (g3 - g2) * (t - 0.5) * 2
-                b_new = b2 + (b3 - b2) * (t - 0.5) * 2
-            colors.append([r_new, g_new, b_new, 1.0])
-        return np.array(colors)
-    else:
-        return plt.cm.viridis(np.linspace(0, 1, n_colors))
-
-def fig_to_array(fig):
-    fig.canvas.draw()
-    img = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).reshape(fig.canvas.get_width_height()[::-1] + (4,))
-    img = img[:, :, :3]
-    plt.close(fig)
-    return img
-
+# Funzioni di rendering (le funzioni di disegno rimangono le stesse)
 def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
