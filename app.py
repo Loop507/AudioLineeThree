@@ -13,6 +13,10 @@ import os
 from scipy.interpolate import CubicSpline
 import ffmpeg
 import pandas as pd
+from opensimplex import OpenSimplex
+
+# Inizializza il generatore di rumore (per il flow field)
+simplex_noise = OpenSimplex()
 
 # Funzione per convertire colore esadecimale in RGB normalizzato
 def hex_to_rgb_norm(hex_color):
@@ -521,58 +525,48 @@ def draw_flow_field_frame(width, height, params, color_palette_option, bg_color,
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
 
-    # Parametri del flow field
-    scale = 0.005 + params['centroid'] * 0.005 * centroid_sensitivity
-    time_offset = params['rms'] * 5 * rms_sensitivity
-    
-    # Crea la griglia di vettori
-    x_coords, y_coords = np.mgrid[0:width:20j, 0:height:20j]
-    
-    # Calcola la "direzione" del flusso
-    flow_angle = np.sin(x_coords * scale + time_offset) + np.cos(y_coords * scale + time_offset)
-    
-    # Prepara i dati per l'interpolazione
-    x_flat = x_coords.flatten()
-    flow_angle_flat = flow_angle.flatten()
-    sorted_indices = np.argsort(x_flat)
-    x_sorted = x_flat[sorted_indices]
-    flow_angle_sorted = flow_angle_flat[sorted_indices]
-
     num_lines = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
     if num_lines > 0:
         colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
         
+        # Crea il campo di forze basato sul rumore
+        grid_scale = 0.005 + params['centroid'] * 0.005 * centroid_sensitivity
+        time_offset = params['rms'] * 5 * rms_sensitivity
+        
+        # Genera e traccia ogni singola linea
         for i in range(num_lines):
-            # Punto di partenza casuale
+            # Posizione di partenza casuale
             x, y = np.random.rand() * width, np.random.rand() * height
+            
+            # L'array per i punti della linea
             line_points = [[x, y]]
             
-            # Traccia la linea nel flow field
+            # Traccia la linea seguendo il flow field
             for _ in range(int(base_distortion_factor * 100)):
-                # Uso np.interp con i dati ordinati per un'interpolazione sicura
-                angle = np.interp(x, x_sorted, flow_angle_sorted)
-                angle_rad = np.deg2rad(angle * 360)
+                # Ottieni l'angolo dal rumore di Simplex
+                angle = simplex_noise.noise2d(x=x * grid_scale, y=y * grid_scale) * np.pi * 2
                 
                 # Calcola il prossimo punto
-                dx = np.cos(angle_rad) * 5
-                dy = np.sin(angle_rad) * 5
+                dx = np.cos(angle) * 5
+                dy = np.sin(angle) * 5
                 
                 x += dx
                 y += dy
                 
-                # Se la linea esce dai limiti, fermala
+                # Interrompi se la linea esce dai limiti
                 if not (0 <= x < width and 0 <= y < height):
                     break
                 line_points.append([x, y])
             
-            # Disegna la linea
+            # Disegna la linea solo se ha più di un punto
             if len(line_points) > 1:
-                points = np.array(line_points).T.reshape(-1, 1, 2)
+                points = np.array(line_points).reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
                 lc = LineCollection(segments, colors=colors[i % len(colors)], linewidth=1.0, alpha=0.7)
                 ax.add_collection(lc)
 
     return fig_to_array(fig)
+
 
 def add_text_to_frame(frame, text, pos, size, color):
     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
