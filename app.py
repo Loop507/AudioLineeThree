@@ -34,436 +34,105 @@ def create_color_palette(palette_name, n_colors, custom_colors=None):
     if palette_name == "Arcobaleno":
         return plt.cm.rainbow(np.linspace(0, 1, n_colors))
     elif palette_name == "Monocromatico":
-        colors = plt.cm.Blues(np.linspace(0.3, 0.9, n_colors))
-        return colors
-    elif palette_name == "Neon":
-        colors = []
-        for i in range(n_colors):
-            r = np.sin(0.3 * i + 0) * 0.5 + 0.5
-            g = np.sin(0.3 * i + 2) * 0.5 + 0.5
-            b = np.sin(0.3 * i + 4) * 0.5 + 0.5
-            colors.append([r, g, b, 1.0])
-        return np.array(colors)
-    elif palette_name == "Personalizza" and custom_colors and len(custom_colors) == 3:
-        r1, g1, b1 = hex_to_rgb_norm(custom_colors[0])
-        r2, g2, b2 = hex_to_rgb_norm(custom_colors[1])
-        r3, g3, b3 = hex_to_rgb_norm(custom_colors[2])
-        
-        colors = []
-        for i in range(n_colors):
-            t = i / (n_colors - 1)
-            if t < 0.5:
-                r_new = r1 + (r2 - r1) * t * 2
-                g_new = g1 + (g2 - g1) * t * 2
-                b_new = b1 + (b2 - b1) * t * 2
-            else:
-                r_new = r2 + (r3 - r2) * (t - 0.5) * 2
-                g_new = g2 + (g3 - g2) * (t - 0.5) * 2
-                b_new = b2 + (b3 - b2) * (t - 0.5) * 2
-            colors.append([r_new, g_new, b_new, 1.0])
-        return np.array(colors)
-    else:
-        return plt.cm.viridis(np.linspace(0, 1, n_colors))
+        if custom_colors:
+            rgb_norm = hex_to_rgb_norm(custom_colors[0])
+            colors = np.array([rgb_norm] * n_colors)
+            return np.hstack((colors, np.ones((n_colors, 1))))
+    elif palette_name == "Pastello":
+        # Palette pastello personalizzata
+        pastel_colors = ['#F5B9B9', '#B9F5D8', '#B9C5F5', '#E9B9F5', '#F5E9B9']
+        colors = [hex_to_rgb_norm(c) for c in pastel_colors]
+        # Ripeti i colori se n_colors è maggiore della palette
+        full_palette = np.array(colors * (n_colors // len(colors) + 1))[:n_colors]
+        return np.hstack((full_palette, np.ones((n_colors, 1))))
+    elif palette_name == "Gradi Monocromatici":
+        if custom_colors:
+            c = hex_to_rgb_norm(custom_colors[0])
+            return plt.cm.get_cmap('Greys_r')(np.linspace(0.2, 0.8, n_colors))
+    elif palette_name == "Personalizza":
+        if custom_colors:
+            colors_norm = np.array([hex_to_rgb_norm(c) for c in custom_colors])
+            # Se ci sono meno colori che linee, ripete la palette
+            full_palette = np.vstack([colors_norm] * (n_colors // len(colors_norm) + 1))[:n_colors]
+            return np.hstack((full_palette, np.ones((n_colors, 1))))
+    return plt.cm.viridis(np.linspace(0, 1, n_colors))
 
-# Funzione per convertire la stringa di keyframe in un dizionario
-def parse_keyframes(kf_string):
-    if not kf_string:
+# Funzione per il parsing dei keyframe
+def parse_keyframes(keyframes_str):
+    if not keyframes_str or not isinstance(keyframes_str, str):
         return None
-    keyframes = {}
-    parts = kf_string.split(',')
-    for part in parts:
-        try:
-            time_str, val_str = part.split(':')
+    try:
+        keyframes = {}
+        parts = keyframes_str.split(',')
+        for part in parts:
+            time_str, value_str = part.split(':')
             time = float(time_str.strip())
-            value = float(val_str.strip())
+            value = float(value_str.strip())
             keyframes[time] = value
-        except ValueError:
-            st.warning(f"Formato keyframe non valido: '{part}'. Ignorato.")
-    # Ordina i keyframe per tempo
-    return dict(sorted(keyframes.items()))
+        return keyframes
+    except (ValueError, IndexError):
+        st.error("Formato keyframe non valido. Usa il formato 'tempo:valore' (es: 0:10, 5:100).")
+        return None
 
-# Funzione per interpolare il valore di un keyframe in un dato momento
+# Funzione per l'interpolazione dei valori
 def interpolate_value(keyframes, current_time):
-    if not keyframes or not keyframes.keys():
-        return 50.0
+    if not keyframes or len(keyframes) == 0:
+        return None
     
-    times = sorted(keyframes.keys())
-    values = [keyframes[t] for t in times]
+    sorted_times = sorted(keyframes.keys())
     
-    if current_time <= times[0]:
-        return values[0]
+    # Se il tempo corrente è prima del primo keyframe, usa il valore del primo
+    if current_time <= sorted_times[0]:
+        return keyframes[sorted_times[0]]
     
-    if current_time >= times[-1]:
-        return values[-1]
+    # Se il tempo corrente è dopo l'ultimo keyframe, usa il valore dell'ultimo
+    if current_time >= sorted_times[-1]:
+        return keyframes[sorted_times[-1]]
     
-    for i in range(len(times) - 1):
-        t1, t2 = times[i], times[i+1]
-        v1, v2 = values[i], values[i+1]
-        
-        if t1 == t2:
-            return v1
-            
+    # Trova i keyframe più vicini al tempo corrente
+    for i in range(len(sorted_times) - 1):
+        t1, t2 = sorted_times[i], sorted_times[i+1]
         if t1 <= current_time <= t2:
-            progress = (current_time - t1) / (t2 - t1)
-            return v1 + progress * (v2 - v1)
-            
-    return values[-1]
+            v1, v2 = keyframes[t1], keyframes[t2]
+            # Interpolazione lineare
+            return v1 + (v2 - v1) * ((current_time - t1) / (t2 - t1))
+    return None
 
-# Funzioni per l'elaborazione audio
-def extract_audio_features(y, sr, frame_size, hop_length):
-    features = {}
-    features['rms'] = librosa.feature.rms(y=y, frame_length=frame_size, hop_length=hop_length)[0]
-    features['centroid'] = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=frame_size, hop_length=hop_length)[0]
-    features['bandwidth'] = librosa.feature.spectral_bandwidth(y=y, sr=sr, n_fft=frame_size, hop_length=hop_length)[0]
-    features['zcr'] = librosa.feature.zero_crossing_rate(y, frame_length=frame_size, hop_length=hop_length)[0]
+
+def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, keyframes_line_count=None, keyframes_distortion=None, rms_sensitivity=1.0, centroid_sensitivity=1.0):
     
-    for key in features:
-        if np.max(features[key]) > 0:
-            features[key] = features[key] / np.max(features[key])
+    y, sr = librosa.load(audio_path, sr=None)
     
-    return features
-
-# Funzioni di rendering
-def draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
+    rms = librosa.feature.rms(y=y, frame_length=1024, hop_length=512)[0]
+    centroid = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=1024, hop_length=512)[0]
     
-    num_lines = int(base_line_count + params['rms'] * 100 * rms_sensitivity)
-    if num_lines > 0:
-        distortion = base_distortion_factor + params['centroid'] * 2 * centroid_sensitivity
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
-        for i in range(num_lines):
-            x1 = i * (width / num_lines)
-            y1 = 0
-            x2 = width - (i * (width / num_lines))
-            y2 = height + np.sin(i * 0.2) * distortion * 50
-            ax.plot([x1, x2], [y1, y2], color=colors[i], linewidth=1.5, alpha=0.8)
-    return fig_to_array(fig)
+    # Normalizza le feature
+    rms = rms / (np.max(rms) if np.max(rms) > 0 else 1) * rms_sensitivity
+    centroid = centroid / (np.max(centroid) if np.max(centroid) > 0 else 1) * centroid_sensitivity
 
-def draw_curve_stitching_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-
-    num_segments = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
-    if num_segments > 0:
-        colors = create_color_palette(color_palette_option, num_segments, custom_colors=line_colors)
-        for i in range(num_segments):
-            start_x, start_y = 0, np.linspace(0, height, num_segments)[i]
-            end_x, end_y = np.linspace(0, width, num_segments)[num_segments - 1 - i], 0
-            control_x = (start_x + end_x) / 2 + params['centroid'] * width * 0.2 * centroid_sensitivity
-            control_y = (start_y + end_y) / 2 + params['bandwidth'] * height * 0.2
-            verts = [(start_x, start_y), (control_x, control_y), (end_x, end_y)]
-            codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
-            path = Path(verts, codes)
-            patch = PathPatch(path, facecolor='none', lw=2, edgecolor=colors[i], alpha=0.8)
-            ax.add_patch(patch)
-    return fig_to_array(fig)
-
-def draw_corner_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-
-    num_lines = int(base_line_count + params['rms'] * 80 * rms_sensitivity)
-    if num_lines > 0:
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
-        for i in range(num_lines):
-            color_to_apply = colors[i % len(colors)]
-            x_points = np.linspace(0, width, num_lines)
-            y_points = np.linspace(0, height, num_lines)
-            ax.plot([0, x_points[i]], [height, y_points[i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
-            ax.plot([width, x_points[num_lines - 1 - i]], [height, y_points[i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
-            ax.plot([0, x_points[i]], [0, y_points[num_lines - 1 - i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
-            ax.plot([width, x_points[num_lines - 1 - i]], [0, y_points[num_lines - 1 - i]], color=color_to_apply, linewidth=1.5, alpha=0.8)
-    return fig_to_array(fig)
-
-def draw_radial_refraction_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
+    features = {'rms': rms, 'centroid': centroid}
     
-    center_x, center_y = width / 2, height / 2
-    num_lines = int(base_line_count + params['rms'] * 80 * rms_sensitivity)
-    if num_lines > 0:
-        line_length = base_distortion_factor * 50 + params['centroid'] * 100 * centroid_sensitivity
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
-        for i in range(num_lines):
-            angle = (i / num_lines) * 2 * np.pi
-            end_x = center_x + line_length * np.cos(angle)
-            end_y = center_y + line_length * np.sin(angle)
-            color_to_apply = colors[i]
-            ax.plot([center_x, end_x], [center_y, end_y], color=color_to_apply, linewidth=2, alpha=0.7)
-    return fig_to_array(fig)
-
-def draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-    num_points = int(base_line_count + params['rms'] * 50 * rms_sensitivity)
-    if num_points > 0:
-        distortion_x = base_distortion_factor + params['rms'] * 50 * rms_sensitivity
-        distortion_y = base_distortion_factor + params['centroid'] * 30 * centroid_sensitivity
-        frequency = 0.1 + params['bandwidth'] * 0.3
-        x = np.linspace(0, width, num_points)
-        y = np.linspace(height/2, height/2, num_points)
-        y += np.sin(x * frequency) * distortion_y
-        x += np.cos(y * 0.05) * distortion_x
-        if len(x) > 3 and len(y) > 3:
-            try:
-                cs = CubicSpline(x, y)
-                xs = np.linspace(min(x), max(x), 200)
-                ys = cs(xs)
-                points = np.array([xs, ys]).T.reshape(-1, 1, 2)
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                colors = create_color_palette(color_palette_option, len(segments), custom_colors=line_colors)
-                lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
-                ax.add_collection(lc)
-            except Exception:
-                color_to_use = create_color_palette(color_palette_option, 1, custom_colors=line_colors)[0]
-                ax.plot(x, y, color=color_to_use, linewidth=2, alpha=0.8)
-    return fig_to_array(fig)
-
-def draw_hybrid_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, rms_sensitivity, centroid_sensitivity, base_distortion_factor):
-    geometric_weight = params['rms']
-    organic_weight = 1 - geometric_weight
-    geometric_img = draw_geometric_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity)
-    organic_img = draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity)
-    blended_img = cv2.addWeighted(geometric_img, geometric_weight, organic_img, organic_weight, 0)
-    return blended_img
-
-def draw_chaotic_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-    num_elements = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
-    if num_elements > 0:
-        size_variation = base_distortion_factor + params['centroid'] * 3 * centroid_sensitivity
-        colors = create_color_palette(color_palette_option, num_elements, custom_colors=line_colors)
-        for i in range(num_elements):
-            x = np.random.rand() * width
-            y = np.random.rand() * height
-            size = (5 + np.random.rand() * 20) * max(0.1, size_variation)
-            shape_type = int((params['zcr'] + np.random.rand()) * 3) % 3
-            color_to_apply = colors[i % len(colors)]
-            if shape_type == 0:
-                circle = plt.Circle((x, y), size, color=color_to_apply, alpha=0.6)
-                ax.add_patch(circle)
-            elif shape_type == 1:
-                rect = plt.Rectangle((x-size/2, y-size/2), size, size, color=color_to_apply, alpha=0.6)
-                ax.add_patch(rect)
-            else:
-                angle = np.random.rand() * 2 * np.pi
-                dx = np.cos(angle) * size
-                dy = np.sin(angle) * size
-                ax.plot([x, x+dx], [y, y+dy], color=color_to_apply, linewidth=2, alpha=0.7)
-    return fig_to_array(fig)
-
-def draw_parabola_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-    num_lines = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
-    if num_lines > 0:
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
-        t = np.linspace(0, 1, num_lines)
-        x_curve1 = t * width
-        y_curve1 = params['rms'] * height * rms_sensitivity * np.sin(t * np.pi * 2 + params['centroid'] * 5 * centroid_sensitivity)
-        x_curve2 = width * (1 - t)
-        y_curve2 = height + params['bandwidth'] * height * np.cos(t * np.pi * 2 + params['zcr'] * 5)
-        for i in range(num_lines):
-            x1 = x_curve1[i]
-            y1 = y_curve1[i]
-            x2 = x_curve2[num_lines - 1 - i]
-            y2 = y_curve2[num_lines - 1 - i]
-            color_to_apply = colors[i]
-            ax.plot([x1, x2], [y1, y2], color=color_to_apply, linewidth=1.5, alpha=0.8)
-    return fig_to_array(fig)
-
-def draw_ellipse_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-    num_lines = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
-    if num_lines > 0:
-        radius = base_distortion_factor * 200 + params['centroid'] * 150 * centroid_sensitivity
-        center_x, center_y = width / 2, height / 2
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
-        theta = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
-        x_circle = radius * np.cos(theta) + center_x
-        y_circle = radius * np.sin(theta) + center_y
-        for i in range(num_lines // 2):
-            x_values = [x_circle[i], x_circle[i + num_lines//2]]
-            y_values = [y_circle[i], y_circle[i + num_lines//2]]
-            color_to_apply = colors[i]
-            ax.plot(x_values, y_values, color=color_to_apply, linewidth=1.5, alpha=0.8)
-    return fig_to_array(fig)
+    total_frames = int(librosa.get_duration(y=y, sr=sr) * fps)
     
-def draw_cardioide_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-    num_points = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
-    if num_points > 0:
-        multiplier = base_distortion_factor + params['centroid'] * 5 * centroid_sensitivity
-        scale = 200 + params['bandwidth'] * 100
-        center_x, center_y = width / 2, height / 2
-        t = np.linspace(0, 2 * np.pi, num_points)
-        x = scale * np.cos(t) + center_x
-        y = scale * np.sin(t) + center_y
-        colors = create_color_palette(color_palette_option, num_points, custom_colors=line_colors)
-        for i in range(num_points):
-            source_index = i
-            target_index = int((multiplier * i) % num_points)
-            color_to_apply = colors[i]
-            ax.plot([x[source_index], x[target_index]], 
-                    [y[source_index], y[target_index]], 
-                    color=color_to_apply, linewidth=1, alpha=0.7)
-    return fig_to_array(fig)
+    # Mappa le funzioni di disegno per ogni stile
+    drawing_functions = {
+        "Onde": draw_waves,
+        "Ragnatela": draw_spiderweb,
+        "Raggi": draw_rays,
+        "Forme Astratte": draw_abstract_shapes,
+    }
 
-def draw_harmonic_spiral_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-    center_x, center_y = width / 2, height / 2
-    num_points = int(base_line_count * 10 + params['rms'] * 1000 * rms_sensitivity)
-    if num_points > 0:
-        colors = create_color_palette(color_palette_option, num_points, custom_colors=line_colors)
-        theta = np.linspace(0, 10 * np.pi, num_points)
-        base_radius = base_line_count + params['rms'] * 150 * rms_sensitivity
-        radius_modulation = base_distortion_factor + params['centroid'] * 0.5 * centroid_sensitivity
-        r = base_radius * np.power(theta, radius_modulation)
-        x = r * np.cos(theta) + center_x
-        y = r * np.sin(theta) + center_y
-        points = np.array([x, y]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-        lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
-        ax.add_collection(lc)
-    return fig_to_array(fig)
-
-def draw_moving_vector_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
-    fig.set_facecolor(bg_color)
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.axis('off')
-    ax.set_facecolor(bg_color)
-    fig.tight_layout(pad=0)
-    center_x, center_y = width / 2, height / 2
-    num_lines = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
-    if num_lines > 0:
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
-        base_angle = np.linspace(0, 2 * np.pi, num_lines, endpoint=False)
-        rotation_speed = params['zcr'] * 2 * np.pi * base_distortion_factor
-        line_length = base_line_count + params['rms'] * 200 * rms_sensitivity
-        for i in range(num_lines):
-            angle = base_angle[i] + rotation_speed
-            x_end = center_x + line_length * np.cos(angle)
-            y_end = center_y + line_length * np.sin(angle)
-            color_to_apply = colors[i]
-            ax.plot([center_x, x_end], [center_y, y_end], color=color_to_apply, linewidth=1.5, alpha=0.8)
-    return fig_to_array(fig)
-
-def add_text_to_frame(frame, text, pos, size, color):
-    rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
-    img_pil = Image.fromarray(frame)
-    draw = ImageDraw.Draw(img_pil)
-    try:
-        font = ImageFont.truetype("arial.ttf", size)
-    except IOError:
-        font = ImageFont.load_default()
-    text_bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = text_bbox[2] - text_bbox[0]
-    text_height = text_bbox[3] - text_bbox[1]
-    frame_width, frame_height = img_pil.size
-    if pos['h'] == "Sinistra":
-        x = 20
-    elif pos['h'] == "Destra":
-        x = frame_width - text_width - 20
-    else:
-        x = (frame_width - text_width) / 2
-    if pos['v'] == "Sopra":
-        y = 20
-    elif pos['v'] == "Sotto":
-        y = frame_height - text_height - 20
-    else:
-        y = (frame_height - text_height) / 2
-    draw.text((x, y), text, font=font, fill=rgb_color)
-    return np.array(img_pil)
-
-def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, keyframes_line_count=None, base_distortion_factor=1.0, rms_sensitivity=1.0, centroid_sensitivity=1.0):
-    try:
-        y, sr = librosa.load(audio_path)
-        video_duration = librosa.get_duration(y=y, sr=sr)
-        total_frames = int(video_duration * fps)
-        hop_length = max(1, len(y) // total_frames)
-        frame_size = 2048
-        features = extract_audio_features(y, sr, frame_size, hop_length)
-        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        temp_video_path = temp_video.name
-        temp_video.close()
-        writer = imageio.get_writer(temp_video_path, fps=fps, macro_block_size=1)
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        drawing_functions = {
-            "Geometrico": draw_geometric_frame,
-            "Organico": draw_organic_frame,
-            "Ibrido": draw_hybrid_frame,
-            "Caotico": draw_chaotic_frame,
-            "Cucitura di Curve": draw_curve_stitching_frame,
-            "Partenza dagli Angoli": draw_corner_frame,
-            "Rifrazione Radiale": draw_radial_refraction_frame,
-            "Parabola Dinamica": draw_parabola_frame,
-            "Ellisse/Cerchio": draw_ellipse_frame,
-            "Cardioide Pulsante": draw_cardioide_frame,
-            "Spirale Armonica": draw_harmonic_spiral_frame,
-            "Vettore in Movimento": draw_moving_vector_frame
-        }
+    frames = []
+    with tempfile.TemporaryDirectory() as temp_dir:
         for i in range(total_frames):
             current_time = i / fps
+            
+            # Interpolazione dei valori dei keyframe
             base_line_count = interpolate_value(keyframes_line_count, current_time)
+            base_distortion_factor = interpolate_value(keyframes_distortion, current_time)
+
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
+
             if style in drawing_functions:
                 frame = drawing_functions[style](
                     width,
@@ -477,199 +146,356 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
                     rms_sensitivity,
                     centroid_sensitivity
                 )
-            if title_params and title_params.get('text'):
-                frame = add_text_to_frame(
-                    frame,
-                    title_params['text'],
-                    {'v': title_params['v_pos'], 'h': title_params['h_pos']},
-                    title_params['size'],
-                    title_params['color']
-                )
-            writer.append_data(frame)
-            progress = (i + 1) / total_frames
-            progress_bar.progress(progress)
-            status_text.text(f"Generazione frame {i+1}/{total_frames} - Durata: {video_duration:.1f}s")
-        writer.close()
-        progress_bar.empty()
-        status_text.empty()
-        return temp_video_path, features
-    except Exception as e:
-        st.error(f"Errore durante la generazione dei frame: {str(e)}")
-        return None, None
+            
+            if title_params and title_params.get("show"):
+                frame = add_title_to_frame(frame, title_params["text"], title_params["font_size"], title_params["font_color"], title_params["position"])
 
-def merge_audio_video(video_path, audio_path, output_path):
+            frames.append(frame)
+            if (i + 1) % (fps * 5) == 0:
+                st.write(f"Fotogrammi generati: {i+1}/{total_frames}")
+
+        video_path = os.path.join(temp_dir, 'output.mp4')
+        imageio.mimwrite(video_path, frames, fps=fps, quality=10, macro_block_size=8)
+        
+        return video_path, features
+
+
+def draw_waves(width, height, features, color_palette_option, bg_color, line_colors, num_lines, distortion_factor, rms_sensitivity, centroid_sensitivity):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.patch.set_facecolor(bg_color)
+    ax.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    
+    y = features['rms']
+    y_norm = y / (np.max(y) if np.max(y) > 0 else 1)
+    
+    if color_palette_option == "Personalizza":
+        palette = create_color_palette("Personalizza", int(num_lines), line_colors)
+    else:
+        palette = create_color_palette(color_palette_option, int(num_lines))
+
+    lines = []
+    
+    # Creazione delle onde basate sull'RMS
+    wave_amplitude = y_norm * height * 0.4
+    
+    for i in range(int(num_lines)):
+        x = np.linspace(0, width, 500)
+        distortion = np.sin(x * features['centroid'] * 0.05) * distortion_factor * (i * 0.01)
+        y_pos = (height / 2) + np.sin(x * 0.05 + i * 0.2) * wave_amplitude + distortion * 20
+        lines.append(np.column_stack((x, y_pos)))
+    
+    lc = LineCollection(lines, colors=palette)
+    ax.add_collection(lc)
+    
+    return fig_to_array(fig)
+
+def draw_spiderweb(width, height, features, color_palette_option, bg_color, line_colors, num_lines, distortion_factor, rms_sensitivity, centroid_sensitivity):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.patch.set_facecolor(bg_color)
+    ax.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+
+    center_x, center_y = width / 2, height / 2
+    
+    rms = features['rms']
+    centroid = features['centroid']
+
+    # La dimensione della ragnatela dipende dal volume
+    size_factor = 0.5 + rms * 0.5 * distortion_factor
+
+    if color_palette_option == "Personalizza":
+        palette = create_color_palette("Personalizza", int(num_lines), line_colors)
+    else:
+        palette = create_color_palette(color_palette_option, int(num_lines))
+
+    # Numero di raggi basato sul numero di linee
+    num_rays = int(num_lines)
+    
+    for i in range(num_rays):
+        angle = 2 * np.pi * i / num_rays
+        
+        # Le posizioni dei vertici della ragnatela cambiano in base al centroid e alla distorsione
+        dist_base = (height / 2) * size_factor
+        dist_variation = np.sin(angle * 10 + centroid * 5) * 50 * distortion_factor
+        dist = dist_base + dist_variation
+
+        x_end = center_x + np.cos(angle) * dist
+        y_end = center_y + np.sin(angle) * dist
+        
+        ax.plot([center_x, x_end], [center_y, y_end], color=palette[i % len(palette)])
+
+    # Creazione degli anelli concentrici
+    for i in range(int(num_lines/5) + 1):
+        radius = (height / 2) * (i / (int(num_lines/5) + 1)) * size_factor
+        
+        # Aggiunge una distorsione agli anelli basata sul volume
+        dist_ring = np.sin(centroid * 20 + i) * 10 * distortion_factor
+        
+        theta = np.linspace(0, 2*np.pi, 100)
+        x_ring = center_x + (radius + dist_ring) * np.cos(theta)
+        y_ring = center_y + (radius + dist_ring) * np.sin(theta)
+        ax.plot(x_ring, y_ring, color=palette[i % len(palette)])
+
+    return fig_to_array(fig)
+
+def draw_rays(width, height, features, color_palette_option, bg_color, line_colors, num_lines, distortion_factor, rms_sensitivity, centroid_sensitivity):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.patch.set_facecolor(bg_color)
+    ax.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+
+    center_x, center_y = width / 2, height / 2
+
+    rms = features['rms']
+    centroid = features['centroid']
+    
+    if color_palette_option == "Personalizza":
+        palette = create_color_palette("Personalizza", int(num_lines), line_colors)
+    else:
+        palette = create_color_palette(color_palette_option, int(num_lines))
+
+    for i in range(int(num_lines)):
+        angle = 2 * np.pi * i / num_lines
+        
+        # Le onde radiali cambiano in base al centroid e alla distorsione
+        wave_freq = centroid * 10
+        ray_length_base = height / 2 * 0.8
+        ray_length_variation = np.sin(wave_freq + i) * 0.1 * rms * ray_length_base * distortion_factor
+        ray_length = ray_length_base + ray_length_variation
+        
+        x_end = center_x + np.cos(angle) * ray_length
+        y_end = center_y + np.sin(angle) * ray_length
+
+        ax.plot([center_x, x_end], [center_y, y_end], color=palette[i % len(palette)], lw=1 + rms * 5)
+    
+    return fig_to_array(fig)
+
+def draw_abstract_shapes(width, height, features, color_palette_option, bg_color, line_colors, num_lines, distortion_factor, rms_sensitivity, centroid_sensitivity):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.patch.set_facecolor(bg_color)
+    ax.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+
+    rms = features['rms']
+    centroid = features['centroid']
+
+    if color_palette_option == "Personalizza":
+        palette = create_color_palette("Personalizza", int(num_lines), line_colors)
+    else:
+        palette = create_color_palette(color_palette_option, int(num_lines))
+
+    for i in range(int(num_lines)):
+        
+        num_vertices = 3 + int(centroid * 10)
+        
+        angles = np.linspace(0, 2*np.pi, num_vertices, endpoint=False)
+        
+        # La grandezza e la posizione delle forme cambiano in base a RMS e centroid
+        radius_base = (width / 5) * (i / num_lines)
+        radius_variation = rms * distortion_factor * 50
+        radius = radius_base + radius_variation
+        
+        # Aggiunge un effetto di distorsione alla posizione dei vertici
+        x_pos_variation = np.sin(i * 0.5 + centroid * 10) * width * 0.1
+        y_pos_variation = np.cos(i * 0.5 + rms * 10) * height * 0.1
+
+        center_x = (width / 2) + x_pos_variation
+        center_y = (height / 2) + y_pos_variation
+        
+        x_vertices = center_x + radius * np.cos(angles)
+        y_vertices = center_y + radius * np.sin(angles)
+
+        verts = list(zip(x_vertices, y_vertices))
+        codes = [Path.MOVETO] + [Path.LINETO] * (len(verts) - 1)
+        path = Path(verts, codes)
+        patch = PathPatch(path, facecolor='none', edgecolor=palette[i % len(palette)], lw=1 + rms * 3)
+        ax.add_patch(patch)
+
+    return fig_to_array(fig)
+
+def add_title_to_frame(frame, title_text, font_size, font_color, position):
+    img = Image.fromarray(frame)
+    draw = ImageDraw.Draw(img)
+    
+    # Carica il font predefinito
     try:
-        input_video = ffmpeg.input(video_path)
-        input_audio = ffmpeg.input(audio_path)
-        ffmpeg.output(input_video, input_audio, output_path, vcodec='copy', acodec='aac').run(overwrite_output=True)
+        font_path = "arial.ttf"
+        font = ImageFont.truetype(font_path, font_size)
+    except IOError:
+        font = ImageFont.load_default()
+
+    text_bbox = draw.textbbox((0, 0), title_text, font=font)
+    text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
+    
+    # Posizionamento
+    if position == "Alto":
+        x = (img.width - text_width) / 2
+        y = 20
+    elif position == "Basso":
+        x = (img.width - text_width) / 2
+        y = img.height - text_height - 20
+    elif position == "Centro":
+        x = (img.width - text_width) / 2
+        y = (img.height - text_height) / 2
+    
+    # Colore del testo
+    if font_color == "Bianco":
+        color = (255, 255, 255)
+    elif font_color == "Nero":
+        color = (0, 0, 0)
+    
+    draw.text((x, y), title_text, font=font, fill=color)
+    return np.array(img)
+
+def merge_video_audio(video_path, audio_path, output_path):
+    try:
+        video_stream = ffmpeg.input(video_path)
+        audio_stream = ffmpeg.input(audio_path)
+        
+        ffmpeg.output(video_stream, audio_stream, output_path, vcodec='copy', acodec='aac', strict='experimental').run(overwrite_output=True)
         return True
     except ffmpeg.Error as e:
-        st.error(f"Errore durante l'unione di video e audio: {e.stderr.decode('utf8')}")
+        st.error(f"Errore FFMPEG: {e.stderr.decode('utf8')}")
         return False
     except Exception as e:
-        st.error(f"Errore durante l'unione di video e audio: {str(e)}")
+        st.error(f"Errore in merge_video_audio: {str(e)}")
         return False
 
-# Configurazione della pagina
-st.set_page_config(
-    page_title="AudioLineThree by Loop507",
-    page_icon="🎵",
-    layout="wide",
-    initial_sidebar_state="expanded"
+# Interfaccia Streamlit
+st.title("Generatore Video Audio Reattivo 🎶")
+st.markdown("Crea un'animazione visiva che reagisce al tuo file audio.")
+
+st.header("1. Carica il tuo Audio")
+audio_file = st.file_uploader("Scegli un file audio (MP3, WAV, M4A)", type=["mp3", "wav", "m4a"])
+
+st.header("2. Scegli le Opzioni Video")
+col1, col2 = st.columns(2)
+with col1:
+    aspect_ratio = st.radio("Formato Video", ("1:1 (Quadrato)", "16:9 (Orizzontale)", "9:16 (Verticale)"))
+    if aspect_ratio == "1:1 (Quadrato)":
+        width, height = 1080, 1080
+    elif aspect_ratio == "16:9 (Orizzontale)":
+        width, height = 1920, 1080
+    else:
+        width, height = 1080, 1920
+        
+    style = st.selectbox("Stile Artistico", ("Onde", "Ragnatela", "Raggi", "Forme Astratte"))
+
+with col2:
+    fps = st.slider("Fotogrammi al Secondo (FPS)", 24, 60, 30)
+
+st.header("3. Controlli Visivi Personalizzati")
+keyframes_line_count_str = st.text_input(
+    "Keyframes Numero Linee (Es: 0:10, 5:100)",
+    value="0:50",
+    help="Definisci il numero di linee a tempi specifici (secondi:valore)."
+)
+keyframes_distortion_str = st.text_input(
+    "Keyframes Fattore di Distorsione (Es: 0:1.0, 5:3.5)",
+    value="0:1.0",
+    help="Definisci il fattore di distorsione a tempi specifici (secondi:valore)."
+)
+rms_sensitivity = st.slider("Sensibilità RMS (Volume)", 0.0, 2.0, 1.0)
+centroid_sensitivity = st.slider("Sensibilità Centroid (Frequenze)", 0.0, 2.0, 1.0)
+
+st.subheader("Palette Colori")
+color_palette_option = st.selectbox(
+    "Scegli una Palette",
+    ("Arcobaleno", "Monocromatico", "Pastello", "Gradi Monocromatici", "Personalizza")
 )
 
-# Titolo dell'app
-st.title("AudioLineThree by Loop507")
-st.markdown("""
-Trasforma la tua musica in opere d'arte algoritmiche uniche.
-Carica un file audio e lascia che l'algoritmo generi un video con visualizzazioni geometriche
-che si evolvono con il suono.
-""")
+bg_color = st.color_picker("Scegli il Colore dello Sfondo", value="#000000")
+line_colors = []
+if color_palette_option in ["Personalizza", "Monocromatico", "Gradi Monocromatici"]:
+    num_custom_colors = st.number_input("Numero di colori personalizzati", 1, 10, 1)
+    custom_palette_data = []
+    for i in range(num_custom_colors):
+        color = st.color_picker(f"Colore {i+1}", value="#FFFFFF")
+        line_colors.append(color)
+        custom_palette_data.append({"Colore": color})
 
-# Sidebar per i controlli
-with st.sidebar:
-    st.header("Controlli")
-    audio_file = st.file_uploader("Carica un file audio", type=['wav', 'mp3', 'ogg', 'flac'])
-    st.subheader("Parametri Video")
-    aspect_ratio = st.selectbox(
-        "Formato di esportazione",
-        ["1:1 (Quadrato)", "9:16 (Verticale)", "16:9 (Orizzontale)"]
-    )
-    if aspect_ratio == "1:1 (Quadrato)":
-        width, height = 800, 800
-    elif aspect_ratio == "9:16 (Verticale)":
-        width, height = 540, 960
-    else:
-        width, height = 1280, 720
-    fps = st.slider("FPS", 10, 60, 24)
-    st.subheader("Stile Artistico")
-    style = st.selectbox(
-        "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante", "Spirale Armonica", "Vettore in Movimento"]
-    )
-    st.subheader("Controlli Visivi Personalizzati")
-    keyframes_line_count_str = st.text_input(
-        "Keyframes Numero Linee (Es: 0:10, 5:100)",
-        value="0:50",
-        help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, l'animazione non verrà applicata."
-    )
-    base_distortion_factor = st.slider("Fattore di Distorsione Base", 0.0, 5.0, 1.0)
-    rms_sensitivity = st.slider("Sensibilità RMS (Volume)", 0.0, 2.0, 1.0)
-    centroid_sensitivity = st.slider("Sensibilità Centroid (Frequenze)", 0.0, 2.0, 1.0)
-    st.subheader("Palette di colori")
-    color_palette_option = st.selectbox(
-        "Palette di colori",
-        ["Arcobaleno", "Monocromatico", "Neon", "Personalizza"]
-    )
-    bg_color = '#000000'
-    line_colors = None
-    custom_palette_data = None
-    if color_palette_option == "Personalizza":
-        st.markdown("Scegli i tuoi colori personalizzati")
-        bg_color = st.color_picker("Colore Sfondo", '#000000')
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            low_freq_color_hex = st.color_picker("Colore Basse Frequenze", '#007FFF')
-        with col2:
-            mid_freq_color_hex = st.color_picker("Colore Medie Frequenze", '#32CD32')
-        with col3:
-            high_freq_color_hex = st.color_picker("Colore Alte Frequenze", '#FF4500')
-        line_colors = [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
-        name_for_low = "Blu" if low_freq_color_hex == '#007FFF' else "Colore Basse Frequenze"
-        name_for_mid = "Verde" if mid_freq_color_hex == '#32CD32' else "Colore Medie Frequenze"
-        name_for_high = "Arancione" if high_freq_color_hex == '#FF4500' else "Colore Alte Frequenze"
-        custom_palette_data = {
-            "Frequenza": ["Basse", "Medie", "Alte"],
-            "Nome Colore": [name_for_low, name_for_mid, name_for_high],
-            "Codice HEX": [low_freq_color_hex, mid_freq_color_hex, high_freq_color_hex]
-        }
-    st.subheader("Titolo Video")
-    enable_title = st.checkbox("Abilita Titolo")
-    if enable_title:
-        title_text = st.text_input("Testo del Titolo", value="Il Mio Titolo")
-        col_pos1, col_pos2 = st.columns(2)
-        with col_pos1:
-            title_v_pos = st.selectbox("Posizione Verticale", ["Sopra", "Sotto"])
-        with col_pos2:
-            title_h_pos = st.selectbox("Posizione Orizzontale", ["Sinistra", "Destra"])
-        col_style1, col_style2 = st.columns(2)
-        with col_style1:
-            title_size = st.slider("Dimensione Testo", 20, 100, 40)
-        with col_style2:
-            title_color = st.color_picker("Colore Testo", "#FFFFFF")
-    generate_button = st.button("Genera Video", type="primary")
+st.subheader("Titolo Video (Opzionale)")
+add_title = st.checkbox("Aggiungi un titolo al video?")
+title_params = None
+if add_title:
+    title_text = st.text_input("Testo del Titolo", value="Audio Visualizer")
+    title_font_size = st.slider("Dimensione Carattere", 10, 100, 40)
+    title_font_color = st.selectbox("Colore del Testo", ("Bianco", "Nero"))
+    title_position = st.selectbox("Posizione del Titolo", ("Alto", "Centro", "Basso"))
+    title_params = {
+        "show": True,
+        "text": title_text,
+        "font_size": title_font_size,
+        "font_color": title_font_color,
+        "position": title_position,
+    }
 
-# Logica principale dell'app
+st.header("4. Genera Video")
+generate_button = st.button("Genera Video! 🚀")
+
 if audio_file and generate_button:
-    audio_path, video_path_no_audio, final_video_path = None, None, None
+    st.info("Generazione del video in corso. Questo può richiedere del tempo...")
+    
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{audio_file.type.split("/")[-1]}') as tmp_audio:
-            tmp_audio.write(audio_file.read())
-            audio_path = tmp_audio.name
-        title_params = None
-        if enable_title:
-            if title_text:
-                title_params = {
-                    'text': title_text,
-                    'v_pos': title_v_pos,
-                    'h_pos': title_h_pos,
-                    'size': title_size,
-                    'color': title_color
-                }
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio_file.name)[1]) as temp_audio_file:
+            temp_audio_file.write(audio_file.getvalue())
+            audio_path = temp_audio_file.name
+
         keyframes_line_count = parse_keyframes(keyframes_line_count_str)
-        with st.spinner("Generazione dei frame video in corso..."):
+        keyframes_distortion = parse_keyframes(keyframes_distortion_str)
+        
+        if keyframes_line_count is None:
+            st.warning("Valori keyframe per 'Numero Linee' non validi. Verrà utilizzato il valore di default '0:50'.")
+            keyframes_line_count = {0.0: 50.0}
+
+        if keyframes_distortion is None:
+            st.warning("Valori keyframe per 'Fattore di Distorsione' non validi. Verrà utilizzato il valore di default '0:1.0'.")
+            keyframes_distortion = {0.0: 1.0}
+
+        with st.spinner("Generazione dei fotogrammi..."):
             video_path_no_audio, video_features = generate_video_frames(
                 audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params,
-                keyframes_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity
+                keyframes_line_count, keyframes_distortion, rms_sensitivity, centroid_sensitivity
             )
-        if video_path_no_audio and os.path.exists(video_path_no_audio):
-            st.info("Unione di video e audio in corso...")
-            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            final_video_path = temp_output.name
-            temp_output.close()
-            if merge_audio_video(video_path_no_audio, audio_path, final_video_path):
-                st.success("Video generato con successo!")
-                st.video(final_video_path)
-                st.markdown("---")
-                st.header("Report Dettagliato Finale")
-                col_gen1, col_gen2 = st.columns(2)
-                with col_gen1:
-                    st.metric("Durata Video", f"{librosa.get_duration(path=audio_path):.2f} secondi")
-                with col_gen2:
-                    st.metric("Fotogrammi Generati", f"{len(video_features['rms'])}")
-                st.subheader("Statistiche Audio Medie")
-                col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
-                with col_stats1:
-                    st.metric("RMS (Volume)", f"{np.mean(video_features['rms']):.2f}")
-                with col_stats2:
-                    st.metric("Centroid (Frequenze)", f"{np.mean(video_features['centroid']):.2f}")
-                with col_stats3:
-                    st.metric("Bandwidth (Larghezza Frequenze)", f"{np.mean(video_features['bandwidth']):.2f}")
-                with col_stats4:
-                    st.metric("ZCR (Variazione Velocità)", f"{np.mean(video_features['zcr']):.2f}")
-                st.subheader("Dettagli Generazione")
-                st.write(f"**Stile Artistico:** {style}")
-                if color_palette_option == "Personalizza":
-                    st.write("**Palette Colori:** Personalizzata")
-                    df_colors = pd.DataFrame(custom_palette_data)
-                    st.table(df_colors)
-                else:
-                    st.write(f"**Palette Colori:** {color_palette_option}")
-                try:
-                    with open(final_video_path, "rb") as f:
-                        video_data = f.read()
-                    ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
-                    file_name = f"AudioLinee_{ratio_name}.mp4"
-                    st.download_button(label="Scarica Video", data=video_data, file_name=file_name, mime="video/mp4")
-                except Exception as e:
-                    st.error(f"Errore durante la preparazione del download: {str(e)}")
+
+        st.success("Fotogrammi generati con successo! Ora unisco video e audio.")
+
+        final_video_path = os.path.join(tempfile.gettempdir(), "final_output.mp4")
+        if merge_video_audio(video_path_no_audio, audio_path, final_video_path):
+            st.success("Video completato! 🎉")
+            st.video(final_video_path)
+            
+            st.markdown("### Dettagli Generazione")
+            st.write(f"**Stile Artistico:** {style}")
+            if color_palette_option == "Personalizza":
+                st.write("**Palette Colori:** Personalizzata")
+                df_colors = pd.DataFrame(custom_palette_data)
+                st.table(df_colors)
             else:
-                st.error("Si è verificato un errore durante l'unione di video e audio.")
+                st.write(f"**Palette Colori:** {color_palette_option}")
+            
+            try:
+                with open(final_video_path, "rb") as f:
+                    video_data = f.read()
+                ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
+                file_name = f"AudioLinee_{ratio_name}.mp4"
+                st.download_button(label="Scarica Video", data=video_data, file_name=file_name, mime="video/mp4")
+            except Exception as e:
+                st.error(f"Errore durante la preparazione del download: {str(e)}")
         else:
-            st.error("Impossibile generare il video. Riprova con un file audio diverso.")
+            st.error("Si è verificato un errore durante l'unione di video e audio.")
     except Exception as e:
         st.error(f"Si è verificato un errore durante la generazione: {str(e)}")
     finally:
         for p in [audio_path, video_path_no_audio, final_video_path]:
             if p and os.path.exists(p):
-                os.unlink(p)
+                os.remove(p)
