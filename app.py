@@ -210,7 +210,7 @@ def draw_radial_refraction_frame(width, height, params, color_palette_option, bg
             end_x = center_x + line_length * np.cos(angle)
             end_y = center_y + line_length * np.sin(angle)
             color_to_apply = colors[i]
-            ax.plot([center_x, end_x], [center_y, end_y], color=color_to_apply, linewidth=2, alpha=0.7)
+            ax.plot([center_x, end_x], [center_y, y_end], color=color_to_apply, linewidth=2, alpha=0.7)
     return fig_to_array(fig)
 
 def draw_organic_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
@@ -221,28 +221,37 @@ def draw_organic_frame(width, height, params, color_palette_option, bg_color, li
     ax.axis('off')
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
+    
     num_points = int(base_line_count + params['rms'] * 50 * rms_sensitivity)
-    if num_points > 0:
+    
+    if num_points > 3:
         distortion_x = base_distortion_factor + params['rms'] * 50 * rms_sensitivity
         distortion_y = base_distortion_factor + params['centroid'] * 30 * centroid_sensitivity
         frequency = 0.1 + params['bandwidth'] * 0.3
+        
         x = np.linspace(0, width, num_points)
         y = np.linspace(height/2, height/2, num_points)
+        
         y += np.sin(x * frequency) * distortion_y
         x += np.cos(y * 0.05) * distortion_x
-        if len(x) > 3 and len(y) > 3:
-            try:
-                cs = CubicSpline(x, y)
-                xs = np.linspace(min(x), max(x), 200)
-                ys = cs(xs)
-                points = np.array([xs, ys]).T.reshape(-1, 1, 2)
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                colors = create_color_palette(color_palette_option, len(segments), custom_colors=line_colors)
-                lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
-                ax.add_collection(lc)
-            except Exception:
-                color_to_use = create_color_palette(color_palette_option, 1, custom_colors=line_colors)[0]
-                ax.plot(x, y, color=color_to_use, linewidth=2, alpha=0.8)
+        
+        # Correggo il bug ordinando i punti prima di interpolare
+        sorted_indices = np.argsort(x)
+        x_sorted = x[sorted_indices]
+        y_sorted = y[sorted_indices]
+        
+        try:
+            cs = CubicSpline(x_sorted, y_sorted)
+            xs = np.linspace(min(x_sorted), max(x_sorted), 200)
+            ys = cs(xs)
+            points = np.array([xs, ys]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            colors = create_color_palette(color_palette_option, len(segments), custom_colors=line_colors)
+            lc = LineCollection(segments, colors=colors, linewidth=2, alpha=0.8)
+            ax.add_collection(lc)
+        except Exception:
+            color_to_use = create_color_palette(color_palette_option, 1, custom_colors=line_colors)[0]
+            ax.plot(x, y, color=color_to_use, linewidth=2, alpha=0.8)
     return fig_to_array(fig)
 
 def draw_hybrid_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, rms_sensitivity, centroid_sensitivity, base_distortion_factor):
@@ -521,8 +530,14 @@ def draw_flow_field_frame(width, height, params, color_palette_option, bg_color,
     
     # Calcola la "direzione" del flusso
     flow_angle = np.sin(x_coords * scale + time_offset) + np.cos(y_coords * scale + time_offset)
-    flow_angle_interpolated = CubicSpline(x_coords.flatten(), flow_angle.flatten())(np.linspace(0, width, 100))
     
+    # Prepara i dati per l'interpolazione
+    x_flat = x_coords.flatten()
+    flow_angle_flat = flow_angle.flatten()
+    sorted_indices = np.argsort(x_flat)
+    x_sorted = x_flat[sorted_indices]
+    flow_angle_sorted = flow_angle_flat[sorted_indices]
+
     num_lines = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
     if num_lines > 0:
         colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
@@ -534,12 +549,13 @@ def draw_flow_field_frame(width, height, params, color_palette_option, bg_color,
             
             # Traccia la linea nel flow field
             for _ in range(int(base_distortion_factor * 100)):
-                angle = np.interp(x, x_coords.flatten(), flow_angle.flatten())
-                angle_deg = np.deg2rad(angle * 360)
+                # Uso np.interp con i dati ordinati per un'interpolazione sicura
+                angle = np.interp(x, x_sorted, flow_angle_sorted)
+                angle_rad = np.deg2rad(angle * 360)
                 
                 # Calcola il prossimo punto
-                dx = np.cos(angle_deg) * 5
-                dy = np.sin(angle_deg) * 5
+                dx = np.cos(angle_rad) * 5
+                dy = np.sin(angle_rad) * 5
                 
                 x += dx
                 y += dy
@@ -614,7 +630,7 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
             "Vettore in Movimento": draw_moving_vector_frame,
             "Reticolo a Vettori": draw_vector_grid_frame,
             "Tunnel Warp": draw_tunnel_warp_frame,
-            "Flow Field": draw_flow_field_frame # Aggiunta del nuovo stile
+            "Flow Field": draw_flow_field_frame
         }
         for i in range(total_frames):
             current_time = i / fps
