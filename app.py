@@ -523,50 +523,43 @@ def draw_flow_field_frame(width, height, params, color_palette_option, bg_color,
     fig.tight_layout(pad=0)
 
     # Parametri del flow field
-    scale = 0.005 + params['centroid'] * 0.005 * centroid_sensitivity
+    line_length = 5
+    num_particles = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
+    flow_scale = 0.005 + params['centroid'] * 0.005 * centroid_sensitivity
     time_offset = params['rms'] * 5 * rms_sensitivity
     
-    # Crea una griglia per il campo di forze
-    x_coords, y_coords = np.mgrid[0:width:20j, 0:height:20j]
-    
-    # Calcola la "direzione" del flusso
-    flow_angle = np.sin(x_coords * scale + time_offset) + np.cos(y_coords * scale + time_offset)
-    
-    # Prepara i dati per l'interpolazione
-    x_flat = x_coords.flatten()
-    flow_angle_flat = flow_angle.flatten()
-    sorted_indices = np.argsort(x_flat)
-    x_sorted = x_flat[sorted_indices]
-    flow_angle_sorted = flow_angle_flat[sorted_indices]
-
-    num_lines = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
-    if num_lines > 0:
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
+    if num_particles > 0:
+        colors = create_color_palette(color_palette_option, num_particles, custom_colors=line_colors)
         
-        for i in range(num_lines):
-            # Punto di partenza casuale
+        # Genera un campo di forze casuale ma coerente
+        field_x, field_y = np.mgrid[0:width:10j, 0:height:10j]
+        
+        # Per una casualità più complessa, usiamo una funzione di rumore semplice basata su sin/cos
+        flow_angles = np.sin(field_x * flow_scale) + np.cos(field_y * flow_scale + time_offset)
+        
+        all_segments = []
+        
+        # Traccia le linee in base al campo di forze
+        for i in range(num_particles):
             x, y = np.random.rand() * width, np.random.rand() * height
             line_points = [[x, y]]
             
-            # Traccia la linea nel flow field
-            for _ in range(int(base_distortion_factor * 100)):
-                # Uso np.interp con i dati ordinati per un'interpolazione sicura
-                angle = np.interp(x, x_sorted, flow_angle_sorted)
-                angle_rad = np.deg2rad(angle * 360)
+            for _ in range(int(base_distortion_factor * 10)):
+                # Interpolazione dell'angolo del flow field
+                flow_angle = np.interp(x, field_x[:, 0], flow_angles[:, np.argmin(np.abs(field_y[0] - y))])
                 
-                # Calcola il prossimo punto
-                dx = np.cos(angle_rad) * 5
-                dy = np.sin(angle_rad) * 5
+                angle_rad = np.deg2rad(flow_angle * 180) 
+                
+                dx = np.cos(angle_rad) * line_length
+                dy = np.sin(angle_rad) * line_length
                 
                 x += dx
                 y += dy
                 
-                # Se la linea esce dai limiti, fermala
                 if not (0 <= x < width and 0 <= y < height):
                     break
                 line_points.append([x, y])
             
-            # Disegna la linea
             if len(line_points) > 1:
                 points = np.array(line_points).T.reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1], points[1:]], axis=1)
