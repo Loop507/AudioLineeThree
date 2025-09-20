@@ -99,7 +99,7 @@ def interpolate_value(keyframes, current_time):
     return None
 
 
-def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, keyframes_line_count=None, keyframes_distortion=None, rms_sensitivity=1.0, centroid_sensitivity=1.0):
+def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_options=None, keyframes_line_count=None, keyframes_distortion=None, rms_sensitivity=1.0, centroid_sensitivity=1.0):
     
     y, sr = librosa.load(audio_path, sr=None)
     
@@ -147,8 +147,8 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
                     centroid_sensitivity
                 )
             
-            if title_params and title_params.get("show"):
-                frame = add_title_to_frame(frame, title_params["text"], title_params["font_size"], title_params["font_color"], title_params["position"])
+            if title_options and title_options.get("show"):
+                frame = add_title_to_frame(frame, title_options)
 
             frames.append(frame)
             if (i + 1) % (fps * 5) == 0:
@@ -322,38 +322,61 @@ def draw_abstract_shapes(width, height, features, color_palette_option, bg_color
 
     return fig_to_array(fig)
 
-def add_title_to_frame(frame, title_text, font_size, font_color, position):
+def add_title_to_frame(frame, title_options):
     img = Image.fromarray(frame)
     draw = ImageDraw.Draw(img)
     
-    # Carica il font predefinito
+    title_text = title_options.get("text", "")
+    font_size = title_options.get("font_size", 40)
+    font_color = title_options.get("font_color", "Bianco")
+    position = title_options.get("position", "Centro")
+    
+    # Gestione sicura del font
     try:
         font_path = "arial.ttf"
         font = ImageFont.truetype(font_path, font_size)
     except IOError:
         font = ImageFont.load_default()
+    
+    if not title_text:
+        return frame
 
-    text_bbox = draw.textbbox((0, 0), title_text, font=font)
-    text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
-    
-    # Posizionamento
-    if position == "Alto":
-        x = (img.width - text_width) / 2
-        y = 20
-    elif position == "Basso":
-        x = (img.width - text_width) / 2
-        y = img.height - text_height - 20
-    elif position == "Centro":
-        x = (img.width - text_width) / 2
-        y = (img.height - text_height) / 2
-    
-    # Colore del testo
-    if font_color == "Bianco":
-        color = (255, 255, 255)
-    elif font_color == "Nero":
-        color = (0, 0, 0)
-    
-    draw.text((x, y), title_text, font=font, fill=color)
+    try:
+        text_bbox = draw.textbbox((0, 0), title_text, font=font)
+        text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
+
+        # Posizionamento
+        if position == "Alto":
+            x = (img.width - text_width) / 2
+            y = 20
+        elif position == "Basso":
+            x = (img.width - text_width) / 2
+            y = img.height - text_height - 20
+        elif position == "Sinistra":
+            x = 20
+            y = (img.height - text_height) / 2
+        elif position == "Destra":
+            x = img.width - text_width - 20
+            y = (img.height - text_height) / 2
+        elif position == "Centro":
+            x = (img.width - text_width) / 2
+            y = (img.height - text_height) / 2
+        else: # Default
+            x, y = 20, 20
+
+        # Colore del testo
+        if font_color == "Bianco":
+            color = (255, 255, 255)
+        elif font_color == "Nero":
+            color = (0, 0, 0)
+        else:
+            color = (255, 255, 255)
+
+        draw.text((x, y), title_text, font=font, fill=color)
+    except Exception as e:
+        st.warning(f"Impossibile disegnare il titolo: {e}")
+        return frame
+
     return np.array(img)
 
 def merge_video_audio(video_path, audio_path, output_path):
@@ -371,7 +394,7 @@ def merge_video_audio(video_path, audio_path, output_path):
         return False
 
 # Interfaccia Streamlit
-st.title("Generatore Video Audio Reattivo 🎶")
+st.title("AudioLineeThree 🎶")
 st.markdown("Crea un'animazione visiva che reagisce al tuo file audio.")
 
 st.header("1. Carica il tuo Audio")
@@ -425,13 +448,13 @@ if color_palette_option in ["Personalizza", "Monocromatico", "Gradi Monocromatic
 
 st.subheader("Titolo Video (Opzionale)")
 add_title = st.checkbox("Aggiungi un titolo al video?")
-title_params = None
+title_options = None
 if add_title:
     title_text = st.text_input("Testo del Titolo", value="Audio Visualizer")
     title_font_size = st.slider("Dimensione Carattere", 10, 100, 40)
     title_font_color = st.selectbox("Colore del Testo", ("Bianco", "Nero"))
-    title_position = st.selectbox("Posizione del Titolo", ("Alto", "Centro", "Basso"))
-    title_params = {
+    title_position = st.selectbox("Posizione del Titolo", ("Alto", "Basso", "Sinistra", "Destra", "Centro"))
+    title_options = {
         "show": True,
         "text": title_text,
         "font_size": title_font_size,
@@ -463,7 +486,7 @@ if audio_file and generate_button:
 
         with st.spinner("Generazione dei fotogrammi..."):
             video_path_no_audio, video_features = generate_video_frames(
-                audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params,
+                audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_options,
                 keyframes_line_count, keyframes_distortion, rms_sensitivity, centroid_sensitivity
             )
 
