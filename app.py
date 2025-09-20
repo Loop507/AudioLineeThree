@@ -405,7 +405,6 @@ def draw_moving_vector_frame(width, height, params, color_palette_option, bg_col
             ax.plot([center_x, x_end], [center_y, y_end], color=color_to_apply, linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
     
-# Funzione per lo stile "Reticolo a Vettori", riscritta completamente
 def draw_vector_grid_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
@@ -449,7 +448,115 @@ def draw_vector_grid_frame(width, height, params, color_palette_option, bg_color
             ax.add_collection(lc)
 
     return fig_to_array(fig)
+
+def draw_tunnel_warp_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor(bg_color)
+    fig.tight_layout(pad=0)
+
+    center_x, center_y = width / 2, height / 2
+    num_shapes = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
     
+    if num_shapes > 0:
+        colors = create_color_palette(color_palette_option, num_shapes, custom_colors=line_colors)
+        
+        distortion_amount = base_distortion_factor * 0.5 + params['centroid'] * 1.5 * centroid_sensitivity
+        
+        for i in range(num_shapes):
+            t = i / num_shapes
+            
+            # Calcola la dimensione e la posizione di ogni forma
+            scale = (1 - t) * (1 + distortion_amount)
+            
+            # Applico la distorsione in base alle features audio
+            rotation = params['zcr'] * 360 * t * 2
+            x_offset = params['rms'] * 50 * distortion_amount
+            y_offset = params['bandwidth'] * 50 * distortion_amount
+            
+            # Crea una griglia per il tunnel
+            points = np.array([
+                [-scale * width / 2, -scale * height / 2],
+                [ scale * width / 2, -scale * height / 2],
+                [ scale * width / 2,  scale * height / 2],
+                [-scale * width / 2,  scale * height / 2],
+                [-scale * width / 2, -scale * height / 2],
+            ])
+
+            # Ruota e sposta i punti
+            angle_rad = np.deg2rad(rotation)
+            rotation_matrix = np.array([
+                [np.cos(angle_rad), -np.sin(angle_rad)],
+                [np.sin(angle_rad),  np.cos(angle_rad)]
+            ])
+            points = points @ rotation_matrix.T
+            points[:, 0] += center_x + x_offset
+            points[:, 1] += center_y + y_offset
+
+            # Disegna la linea
+            path = Path(points, [Path.MOVETO, Path.LINETO, Path.LINETO, Path.LINETO, Path.CLOSEPOLY])
+            patch = PathPatch(path, facecolor='none', lw=1.5, edgecolor=colors[i], alpha=0.8)
+            ax.add_patch(patch)
+            
+    return fig_to_array(fig)
+
+def draw_flow_field_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
+    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+    fig.set_facecolor(bg_color)
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.axis('off')
+    ax.set_facecolor(bg_color)
+    fig.tight_layout(pad=0)
+
+    # Parametri del flow field
+    scale = 0.005 + params['centroid'] * 0.005 * centroid_sensitivity
+    time_offset = params['rms'] * 5 * rms_sensitivity
+    
+    # Crea la griglia di vettori
+    x_coords, y_coords = np.mgrid[0:width:20j, 0:height:20j]
+    
+    # Calcola la "direzione" del flusso
+    flow_angle = np.sin(x_coords * scale + time_offset) + np.cos(y_coords * scale + time_offset)
+    flow_angle_interpolated = CubicSpline(x_coords.flatten(), flow_angle.flatten())(np.linspace(0, width, 100))
+    
+    num_lines = int(base_line_count + params['rms'] * 200 * rms_sensitivity)
+    if num_lines > 0:
+        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
+        
+        for i in range(num_lines):
+            # Punto di partenza casuale
+            x, y = np.random.rand() * width, np.random.rand() * height
+            line_points = [[x, y]]
+            
+            # Traccia la linea nel flow field
+            for _ in range(int(base_distortion_factor * 100)):
+                angle = np.interp(x, x_coords.flatten(), flow_angle.flatten())
+                angle_deg = np.deg2rad(angle * 360)
+                
+                # Calcola il prossimo punto
+                dx = np.cos(angle_deg) * 5
+                dy = np.sin(angle_deg) * 5
+                
+                x += dx
+                y += dy
+                
+                # Se la linea esce dai limiti, fermala
+                if not (0 <= x < width and 0 <= y < height):
+                    break
+                line_points.append([x, y])
+            
+            # Disegna la linea
+            if len(line_points) > 1:
+                points = np.array(line_points).T.reshape(-1, 1, 2)
+                segments = np.concatenate([points[:-1], points[1:]], axis=1)
+                lc = LineCollection(segments, colors=colors[i % len(colors)], linewidth=1.0, alpha=0.7)
+                ax.add_collection(lc)
+
+    return fig_to_array(fig)
 
 def add_text_to_frame(frame, text, pos, size, color):
     rgb_color = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
@@ -505,13 +612,14 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
             "Cardioide Pulsante": draw_cardioide_frame,
             "Spirale Armonica": draw_harmonic_spiral_frame,
             "Vettore in Movimento": draw_moving_vector_frame,
-            "Reticolo a Vettori": draw_vector_grid_frame # Aggiunta la riga per il nuovo stile
+            "Reticolo a Vettori": draw_vector_grid_frame,
+            "Tunnel Warp": draw_tunnel_warp_frame,
+            "Flow Field": draw_flow_field_frame # Aggiunta del nuovo stile
         }
         for i in range(total_frames):
             current_time = i / fps
             base_line_count = interpolate_value(keyframes_line_count, current_time)
-            # Ripristinato il keyframe per la distorsione
-            base_distortion_factor = interpolate_value(keyframes_distortion, current_time) 
+            base_distortion_factor = interpolate_value(keyframes_distortion, current_time)
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             if style in drawing_functions:
                 frame = drawing_functions[style](
@@ -594,7 +702,7 @@ with st.sidebar:
     st.subheader("Stile Artistico")
     style = st.selectbox(
         "Seleziona lo stile",
-        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante", "Spirale Armonica", "Vettore in Movimento", "Reticolo a Vettori"] # Aggiunto il nuovo stile
+        ["Geometrico", "Organico", "Ibrido", "Caotico", "Cucitura di Curve", "Partenza dagli Angoli", "Rifrazione Radiale", "Parabola Dinamica", "Ellisse/Cerchio", "Cardioide Pulsante", "Spirale Armonica", "Vettore in Movimento", "Reticolo a Vettori", "Tunnel Warp", "Flow Field"]
     )
     st.subheader("Controlli Visivi Personalizzati")
     keyframes_line_count_str = st.text_input(
@@ -602,7 +710,6 @@ with st.sidebar:
         value="0:50",
         help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, l'animazione non verrà applicata."
     )
-    # Ripristinato il controllo per i keyframe del fattore di distorsione
     keyframes_distortion_str = st.text_input(
         "Keyframes Fattore di Distorsione (Es: 0:1.0, 5:3.5)",
         value="0:1.0",
@@ -671,7 +778,6 @@ if audio_file and generate_button:
                     'color': title_color
                 }
         keyframes_line_count = parse_keyframes(keyframes_line_count_str)
-        # Ripristinata la lettura dei keyframe per la distorsione
         keyframes_distortion = parse_keyframes(keyframes_distortion_str)
         if keyframes_line_count is None:
             st.warning("Valori keyframe per 'Numero Linee' non validi. Verrà utilizzato il valore di default '0:50'.")
