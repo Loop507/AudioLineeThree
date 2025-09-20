@@ -405,7 +405,7 @@ def draw_moving_vector_frame(width, height, params, color_palette_option, bg_col
             ax.plot([center_x, x_end], [center_y, y_end], color=color_to_apply, linewidth=1.5, alpha=0.8)
     return fig_to_array(fig)
     
-# Funzione aggiunta per lo stile "Reticolo a Vettori"
+# Funzione per lo stile "Reticolo a Vettori", riscritta completamente
 def draw_vector_grid_frame(width, height, params, color_palette_option, bg_color, line_colors, base_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity):
     fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
     fig.set_facecolor(bg_color)
@@ -415,25 +415,38 @@ def draw_vector_grid_frame(width, height, params, color_palette_option, bg_color
     ax.set_facecolor(bg_color)
     fig.tight_layout(pad=0)
 
-    num_lines = int(base_line_count + params['rms'] * 150 * rms_sensitivity)
-    if num_lines > 0:
-        # Punti base
-        x_points = np.linspace(0, width, num_lines)
-        y_points = np.linspace(0, height, num_lines)
+    num_rows = int(np.sqrt(base_line_count))
+    num_cols = int(np.sqrt(base_line_count))
+    
+    if num_rows > 0 and num_cols > 0:
+        x_grid = np.linspace(0, width, num_cols)
+        y_grid = np.linspace(0, height, num_rows)
+        xx, yy = np.meshgrid(x_grid, y_grid)
+        
+        # Applico distorsione
+        distortion_x = base_distortion_factor * 20 + params['rms'] * 50 * rms_sensitivity
+        distortion_y = base_distortion_factor * 20 + params['centroid'] * 50 * centroid_sensitivity
+        
+        # Deformo i punti della griglia in base alle sensibilità e al fattore di distorsione
+        xx_deformed = xx + np.sin(yy * 0.05 + params['zcr'] * 2) * distortion_x
+        yy_deformed = yy + np.cos(xx * 0.05 + params['zcr'] * 2) * distortion_y
+        
+        all_segments = []
+        
+        # Collego i punti orizzontalmente
+        for i in range(num_rows):
+            for j in range(num_cols - 1):
+                all_segments.append([[xx_deformed[i, j], yy_deformed[i, j]], [xx_deformed[i, j+1], yy_deformed[i, j+1]]])
+                
+        # Collego i punti verticalmente
+        for i in range(num_rows - 1):
+            for j in range(num_cols):
+                all_segments.append([[xx_deformed[i, j], yy_deformed[i, j]], [xx_deformed[i+1, j], yy_deformed[i+1, j]]])
 
-        # Deformazione basata sull'audio
-        x_points += np.sin(x_points * 0.01 + params['centroid'] * 5 * centroid_sensitivity) * base_distortion_factor * 10
-        y_points += np.cos(y_points * 0.01 + params['zcr'] * 5) * base_distortion_factor * 10
-        
-        colors = create_color_palette(color_palette_option, num_lines, custom_colors=line_colors)
-        
-        # Disegna le linee verticali e orizzontali del reticolo
-        for i in range(num_lines):
-            color_to_apply = colors[i]
-            # Linee verticali
-            ax.plot([x_points[i], x_points[i]], [0, height], color=color_to_apply, linewidth=0.5, alpha=0.6)
-            # Linee orizzontali
-            ax.plot([0, width], [y_points[i], y_points[i]], color=color_to_apply, linewidth=0.5, alpha=0.6)
+        if all_segments:
+            colors = create_color_palette(color_palette_option, len(all_segments), custom_colors=line_colors)
+            lc = LineCollection(all_segments, colors=colors, linewidth=0.8, alpha=0.7)
+            ax.add_collection(lc)
 
     return fig_to_array(fig)
     
@@ -465,7 +478,7 @@ def add_text_to_frame(frame, text, pos, size, color):
     draw.text((x, y), text, font=font, fill=rgb_color)
     return np.array(img_pil)
 
-def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, keyframes_line_count=None, base_distortion_factor=1.0, rms_sensitivity=1.0, centroid_sensitivity=1.0):
+def generate_video_frames(audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params=None, keyframes_line_count=None, keyframes_distortion=None, rms_sensitivity=1.0, centroid_sensitivity=1.0):
     try:
         y, sr = librosa.load(audio_path)
         video_duration = librosa.get_duration(y=y, sr=sr)
@@ -497,6 +510,8 @@ def generate_video_frames(audio_path, width, height, fps, style, color_palette_o
         for i in range(total_frames):
             current_time = i / fps
             base_line_count = interpolate_value(keyframes_line_count, current_time)
+            # Ripristinato il keyframe per la distorsione
+            base_distortion_factor = interpolate_value(keyframes_distortion, current_time) 
             frame_features = {key: features[key][min(i, len(features[key]) - 1)] for key in features}
             if style in drawing_functions:
                 frame = drawing_functions[style](
@@ -587,7 +602,12 @@ with st.sidebar:
         value="0:50",
         help="Definisci il numero di linee a tempi specifici (secondi:valore). Se lasciato vuoto, l'animazione non verrà applicata."
     )
-    base_distortion_factor = st.slider("Fattore di Distorsione Base", 0.0, 5.0, 1.0)
+    # Ripristinato il controllo per i keyframe del fattore di distorsione
+    keyframes_distortion_str = st.text_input(
+        "Keyframes Fattore di Distorsione (Es: 0:1.0, 5:3.5)",
+        value="0:1.0",
+        help="Definisci il fattore di distorsione a tempi specifici (secondi:valore)."
+    )
     rms_sensitivity = st.slider("Sensibilità RMS (Volume)", 0.0, 2.0, 1.0)
     centroid_sensitivity = st.slider("Sensibilità Centroid (Frequenze)", 0.0, 2.0, 1.0)
     st.subheader("Palette di colori")
@@ -651,10 +671,19 @@ if audio_file and generate_button:
                     'color': title_color
                 }
         keyframes_line_count = parse_keyframes(keyframes_line_count_str)
+        # Ripristinata la lettura dei keyframe per la distorsione
+        keyframes_distortion = parse_keyframes(keyframes_distortion_str)
+        if keyframes_line_count is None:
+            st.warning("Valori keyframe per 'Numero Linee' non validi. Verrà utilizzato il valore di default '0:50'.")
+            keyframes_line_count = {0.0: 50.0}
+        if keyframes_distortion is None:
+            st.warning("Valori keyframe per 'Fattore di Distorsione' non validi. Verrà utilizzato il valore di default '0:1.0'.")
+            keyframes_distortion = {0.0: 1.0}
+            
         with st.spinner("Generazione dei frame video in corso..."):
             video_path_no_audio, video_features = generate_video_frames(
                 audio_path, width, height, fps, style, color_palette_option, bg_color, line_colors, title_params,
-                keyframes_line_count, base_distortion_factor, rms_sensitivity, centroid_sensitivity
+                keyframes_line_count, keyframes_distortion, rms_sensitivity, centroid_sensitivity
             )
         if video_path_no_audio and os.path.exists(video_path_no_audio):
             st.info("Unione di video e audio in corso...")
