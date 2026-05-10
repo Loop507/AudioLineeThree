@@ -694,6 +694,22 @@ Carica un file audio e lascia che l'algoritmo generi un video con visualizzazion
 che si evolvono con il suono.
 """)
 
+# Inizializza session state per sopravvivere ai rerun da download_button
+if "alt3_video_bytes" not in st.session_state:
+    st.session_state.alt3_video_bytes = None
+if "alt3_video_filename" not in st.session_state:
+    st.session_state.alt3_video_filename = None
+if "alt3_report_text" not in st.session_state:
+    st.session_state.alt3_report_text = None
+if "alt3_report_filename" not in st.session_state:
+    st.session_state.alt3_report_filename = None
+if "alt3_features" not in st.session_state:
+    st.session_state.alt3_features = None
+if "alt3_duration" not in st.session_state:
+    st.session_state.alt3_duration = None
+if "alt3_total_frames" not in st.session_state:
+    st.session_state.alt3_total_frames = None
+
 # Sidebar per i controlli
 with st.sidebar:
     st.header("Controlli")
@@ -810,39 +826,60 @@ if audio_file and generate_button:
             if merge_audio_video(video_path_no_audio, audio_path, final_video_path):
                 st.success("Video generato con successo!")
                 st.video(final_video_path)
-                st.markdown("---")
-                st.header("Report Dettagliato Finale")
-                col_gen1, col_gen2 = st.columns(2)
-                with col_gen1:
-                    st.metric("Durata Video", f"{librosa.get_duration(path=audio_path):.2f} secondi")
-                with col_gen2:
-                    st.metric("Fotogrammi Generati", f"{len(video_features['rms'])}")
-                st.subheader("Statistiche Audio Medie")
-                col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
-                with col_stats1:
-                    st.metric("RMS (Volume)", f"{np.mean(video_features['rms']):.2f}")
-                with col_stats2:
-                    st.metric("Centroid (Frequenze)", f"{np.mean(video_features['centroid']):.2f}")
-                with col_stats3:
-                    st.metric("Bandwidth (Larghezza Frequenze)", f"{np.mean(video_features['bandwidth']):.2f}")
-                with col_stats4:
-                    st.metric("ZCR (Variazione Velocità)", f"{np.mean(video_features['zcr']):.2f}")
-                st.subheader("Dettagli Generazione")
-                st.write(f"**Stile Artistico:** {style}")
-                if color_palette_option == "Personalizza":
-                    st.write("**Palette Colori:** Personalizzata")
-                    df_colors = pd.DataFrame(custom_palette_data)
-                    st.table(df_colors)
-                else:
-                    st.write(f"**Palette Colori:** {color_palette_option}")
-                try:
-                    with open(final_video_path, "rb") as f:
-                        video_data = f.read()
-                    ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
-                    file_name = f"AudioLinee_{ratio_name}.mp4"
-                    st.download_button(label="Scarica Video", data=video_data, file_name=file_name, mime="video/mp4")
-                except Exception as e:
-                    st.error(f"Errore durante la preparazione del download: {str(e)}")
+
+                # Leggi i bytes del video e salvali in session_state
+                with open(final_video_path, "rb") as f:
+                    video_bytes = f.read()
+
+                audio_duration = librosa.get_duration(path=audio_path)
+                total_frames_count = len(video_features['rms'])
+
+                # Costruisci il report stilizzato
+                ratio_name = "square" if aspect_ratio == "1:1 (Quadrato)" else "vertical" if aspect_ratio == "9:16 (Verticale)" else "horizontal"
+                vol_mean = float(np.mean(video_features['rms']))
+                vol_std  = float(np.std(video_features['rms']))
+                centroid_mean = float(np.mean(video_features['centroid']))
+                bw_mean = float(np.mean(video_features['bandwidth']))
+                zcr_mean = float(np.mean(video_features['zcr']))
+                clipping_label = "Sub_Clipping" if vol_mean > 0.75 else ("Mid_Saturation" if vol_mean > 0.45 else "Clean_Signal")
+                mins = int(audio_duration) // 60
+                secs = int(audio_duration) % 60
+                duration_str = f"{mins:02d}:{secs:02d}"
+
+                palette_label_map = {
+                    "Arcobaleno": "Rainbow / Full-Spectrum Sweep",
+                    "Monocromatico": "Monochromatic / Blues Gradient",
+                    "Neon": "Neon / Sinusoidal RGB Emission",
+                    "Personalizza": "Custom / User-Defined Frequency Map"
+                }
+                palette_label = palette_label_map.get(color_palette_option, color_palette_option)
+
+                style_code = style.upper().replace(" ", "_").replace("/", "_")
+
+                report_text = f"""[ALT3_ARCHIVE] // STYLE_{style_code} // H.264 // AAC
+:: STYLE: {style} / Algorithmic Line Synthesis
+:: ENGINE: audio_line_three_generator [01.00]
+:: AUDIO: 22kHz / 32-bit Float / {clipping_label}
+:: PATTERN: {style}
+:: PALETTE: {palette_label}
+:: SENSITIVITY: RMS={rms_sensitivity:.1f} / Centroid={centroid_sensitivity:.1f}
+:: STATS: Vol_μ={vol_mean:.2f} / Vol_σ={vol_std:.2f} / Centroid_μ={centroid_mean:.2f} / BW_μ={bw_mean:.2f} / ZCR_μ={zcr_mean:.2f}
+:: FORMAT: {aspect_ratio} / {width}×{height}px / {fps} FPS / {total_frames_count} Frames
+:: PROCESS: Audio Features → Keyframe Interpolation → Frame Synthesis → H.264 Encode
+:: DURATION: {duration_str}
+"It's not a video. It's the music rendered as geometry."
+> Direction & Algorithm: Loop507
+#AudioVisual #GenerativeArt #AlgorithmicVideo #SoundDesign #NewMediaArt #VisualMusic #SpectralArt #LineArt #SignalProcessing #AudioSync #ComputationalArt #FrequencyMapping #MotionDesign #DataArt #MatplotlibArt"""
+
+                # Salva tutto in session_state
+                st.session_state.alt3_video_bytes = video_bytes
+                st.session_state.alt3_video_filename = f"AudioLineeThree_{ratio_name}.mp4"
+                st.session_state.alt3_report_text = report_text
+                st.session_state.alt3_report_filename = f"report_alt3_{style_code}_{ratio_name}.txt"
+                st.session_state.alt3_features = video_features
+                st.session_state.alt3_duration = audio_duration
+                st.session_state.alt3_total_frames = total_frames_count
+
             else:
                 st.error("Si è verificato un errore durante l'unione di video e audio.")
         else:
@@ -850,6 +887,55 @@ if audio_file and generate_button:
     except Exception as e:
         st.error(f"Si è verificato un errore durante la generazione: {str(e)}")
     finally:
+        # Pulisci solo i file temporanei intermedi, NON il video finale (già letto in bytes)
         for p in [audio_path, video_path_no_audio, final_video_path]:
             if p and os.path.exists(p):
-                os.unlink(p)
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
+
+# --- Download video + report: FUORI dal blocco genera, leggono da session_state ---
+# Sopravvivono ai rerun causati dai download_button stessi
+if st.session_state.alt3_video_bytes is not None:
+    st.markdown("---")
+
+    # Report dettagliato con metriche
+    st.header("Report Dettagliato Finale")
+    features = st.session_state.alt3_features
+    col_gen1, col_gen2 = st.columns(2)
+    with col_gen1:
+        st.metric("Durata Video", f"{st.session_state.alt3_duration:.2f} secondi")
+    with col_gen2:
+        st.metric("Fotogrammi Generati", f"{st.session_state.alt3_total_frames}")
+    st.subheader("Statistiche Audio Medie")
+    col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+    with col_stats1:
+        st.metric("RMS (Volume)", f"{np.mean(features['rms']):.2f}")
+    with col_stats2:
+        st.metric("Centroid (Frequenze)", f"{np.mean(features['centroid']):.2f}")
+    with col_stats3:
+        st.metric("Bandwidth (Larghezza Frequenze)", f"{np.mean(features['bandwidth']):.2f}")
+    with col_stats4:
+        st.metric("ZCR (Variazione Velocità)", f"{np.mean(features['zcr']):.2f}")
+
+    # Download video
+    st.download_button(
+        label="Scarica Video",
+        data=st.session_state.alt3_video_bytes,
+        file_name=st.session_state.alt3_video_filename,
+        mime="video/mp4",
+        key="dl_video_alt3"
+    )
+
+    # Report stilizzato
+    st.markdown("---")
+    st.subheader("📋 Report per Social / YouTube")
+    st.code(st.session_state.alt3_report_text, language=None)
+    st.download_button(
+        label="⬇️ Scarica Report (.txt)",
+        data=st.session_state.alt3_report_text,
+        file_name=st.session_state.alt3_report_filename,
+        mime="text/plain",
+        key="dl_report_alt3"
+    )
