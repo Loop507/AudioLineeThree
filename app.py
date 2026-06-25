@@ -749,12 +749,11 @@ with st.sidebar:
         "Palette di colori",
         ["Arcobaleno", "Monocromatico", "Neon", "Personalizza"]
     )
-    bg_color = '#000000'
+    bg_color = st.color_picker("Colore Sfondo", '#000000')
     line_colors = None
     custom_palette_data = None
     if color_palette_option == "Personalizza":
         st.markdown("Scegli i tuoi colori personalizzati")
-        bg_color = st.color_picker("Colore Sfondo", '#000000')
         col1, col2, col3 = st.columns(3)
         with col1:
             low_freq_color_hex = st.color_picker("Colore Basse Frequenze", '#007FFF')
@@ -785,7 +784,46 @@ with st.sidebar:
             title_size = st.slider("Dimensione Testo", 20, 100, 40)
         with col_style2:
             title_color = st.color_picker("Colore Testo", "#FFFFFF")
+    preview_button = st.button("🔍 Anteprima Stile")
     generate_button = st.button("Genera Video", type="primary")
+
+# --- Anteprima statica dello stile ---
+if preview_button:
+    st.subheader(f"🔍 Anteprima: {style}")
+    preview_params = {'rms': 0.6, 'centroid': 0.5, 'bandwidth': 0.4, 'zcr': 0.3}
+    preview_w, preview_h = (400, 400) if aspect_ratio == "1:1 (Quadrato)" else (270, 480) if aspect_ratio == "9:16 (Verticale)" else (640, 360)
+    drawing_functions_preview = {
+        "Geometrico": draw_geometric_frame,
+        "Organico": draw_organic_frame,
+        "Ibrido": draw_hybrid_frame,
+        "Caotico": draw_chaotic_frame,
+        "Cucitura di Curve": draw_curve_stitching_frame,
+        "Partenza dagli Angoli": draw_corner_frame,
+        "Rifrazione Radiale": draw_radial_refraction_frame,
+        "Parabola Dinamica": draw_parabola_frame,
+        "Ellisse/Cerchio": draw_ellipse_frame,
+        "Cardioide Pulsante": draw_cardioide_frame,
+        "Spirale Armonica": draw_harmonic_spiral_frame,
+        "Vettore in Movimento": draw_moving_vector_frame,
+        "Reticolo a Vettori": draw_vector_grid_frame,
+        "Tunnel Warp": draw_tunnel_warp_frame,
+        "Flow Field": draw_flow_field_frame
+    }
+    try:
+        kf_lc_preview = parse_keyframes(keyframes_line_count_str) or {0.0: 50.0}
+        kf_dist_preview = parse_keyframes(keyframes_distortion_str) or {0.0: 1.0}
+        prev_line_count = max(1, interpolate_value(kf_lc_preview, 0.0))
+        prev_distortion = interpolate_value(kf_dist_preview, 0.0)
+        if style in drawing_functions_preview:
+            preview_frame = drawing_functions_preview[style](
+                preview_w, preview_h, preview_params,
+                color_palette_option, bg_color, line_colors,
+                prev_line_count, prev_distortion,
+                rms_sensitivity, centroid_sensitivity
+            )
+            st.image(preview_frame, caption=f"{style} — parametri neutri (RMS 0.6 / Centroid 0.5)", use_container_width=False)
+    except Exception as e:
+        st.error(f"Errore nell'anteprima: {str(e)}")
 
 # Logica principale dell'app
 if audio_file and generate_button:
