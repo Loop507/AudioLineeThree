@@ -1,10 +1,10 @@
 streamlit
 numpy
-librosa
-matplotlib
-Pillow
+scipy
+matplotlib>=3.5
 opencv-python-headless
 imageio
 imageio-ffmpeg
-scipy
+librosa
+pillow>=10.1
 ffmpeg-python
